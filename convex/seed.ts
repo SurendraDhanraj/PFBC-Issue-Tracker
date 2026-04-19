@@ -777,3 +777,185 @@ export const seedIssues2 = mutation({
   },
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MIGRATION: copies users & roles from local dev to any cloud deployment.
+// Upserts by email / role name so it is safe to re-run.
+// ─────────────────────────────────────────────────────────────────────────────
+export const migrateUsersAndRoles = mutation({
+  args: {},
+  handler: async (ctx) => {
+
+    // ── 1. ROLES ─────────────────────────────────────────────────────────────
+    const existingRoles = await ctx.db.query("roles").collect();
+    const roleByName = (n: string) => existingRoles.find((r: any) => r.name === n);
+
+    const rolesData = [
+      {
+        name: "Medical Officer of Health", color: "#ef4444", sortOrder: 1,
+        description: "Chief Medical Administrator", active: true,
+        permissions: {
+          adminPanel: "admin", dashboard: "admin", foodEstablishments: "admin",
+          foodVendors: "admin", issues: "admin", leaveTracker: "admin", staffManagement: "admin",
+        },
+      },
+      {
+        name: "Public Health Inspector III", color: "#f59e0b", sortOrder: 2,
+        description: "Senior public health inspector", active: true,
+        permissions: {
+          adminPanel: "none", dashboard: "write", foodEstablishments: "write",
+          foodVendors: "write", issues: "write", leaveTracker: "write", staffManagement: "none",
+        },
+      },
+      {
+        name: "Public Health Inspector II", color: "#3b82f6", sortOrder: 3,
+        description: "Intermediate public health inspector", active: true,
+        permissions: {
+          adminPanel: "none", dashboard: "write", foodEstablishments: "write",
+          foodVendors: "write", issues: "write", leaveTracker: "view", staffManagement: "none",
+        },
+      },
+      {
+        name: "Public Health Inspector I", color: "#06b6d4", sortOrder: 4,
+        description: "Junior public health inspector", active: true,
+        permissions: {
+          adminPanel: "none", dashboard: "write", foodEstablishments: "write",
+          foodVendors: "write", issues: "write", leaveTracker: "view", staffManagement: "none",
+        },
+      },
+      {
+        name: "Sanitation Foreman III", color: "#8b5cf6", sortOrder: 5,
+        description: "Senior sanitation supervisor", active: true,
+        permissions: {
+          adminPanel: "none", dashboard: "view", foodEstablishments: "none",
+          foodVendors: "none", issues: "write", leaveTracker: "view", staffManagement: "none",
+        },
+      },
+      {
+        name: "Sanitation Foreman II", color: "#6366f1", sortOrder: 6,
+        description: "Intermediate sanitation supervisor", active: true,
+        permissions: {
+          adminPanel: "none", dashboard: "view", foodEstablishments: "none",
+          foodVendors: "none", issues: "write", leaveTracker: "view", staffManagement: "none",
+        },
+      },
+      {
+        name: "Sanitation Foreman I", color: "#64748b", sortOrder: 7,
+        description: "Junior sanitation supervisor", active: true,
+        permissions: {
+          adminPanel: "none", dashboard: "view", foodEstablishments: "none",
+          foodVendors: "none", issues: "view", leaveTracker: "view", staffManagement: "none",
+        },
+      },
+      {
+        name: "Litter Warden", color: "#10b981", sortOrder: 8,
+        description: "Litter enforcement officer", active: true,
+        permissions: {
+          adminPanel: "none", dashboard: "view", foodEstablishments: "none",
+          foodVendors: "none", issues: "view", leaveTracker: "view", staffManagement: "none",
+        },
+      },
+      {
+        name: "Clerical", color: "#94a3b8", sortOrder: 9,
+        description: "Administrative and clerical support", active: true,
+        permissions: {
+          adminPanel: "none", dashboard: "view", foodEstablishments: "view",
+          foodVendors: "view", issues: "view", leaveTracker: "admin", staffManagement: "none",
+        },
+      },
+      {
+        name: "Viewer", color: "#475569", sortOrder: 10,
+        description: "Read-only access", active: true,
+        permissions: {
+          adminPanel: "none", dashboard: "view", foodEstablishments: "view",
+          foodVendors: "view", issues: "view", leaveTracker: "view", staffManagement: "none",
+        },
+      },
+    ];
+
+    let rolesCreated = 0, rolesUpdated = 0;
+    for (const role of rolesData) {
+      const existing = roleByName(role.name);
+      if (existing) {
+        await ctx.db.patch(existing._id, role);
+        rolesUpdated++;
+      } else {
+        await ctx.db.insert("roles", role as any);
+        rolesCreated++;
+      }
+    }
+
+    // ── 2. USERS ─────────────────────────────────────────────────────────────
+    // Password hashes/salts are copied verbatim so users log in with the same
+    // credentials as on the local deployment.
+    const usersData = [
+      {
+        name: "Dr. Surendra Dhanraj", email: "admin@pf.health.gov.tt",
+        role: "Medical Officer of Health", initials: "DS", phone: "6855189",
+        assignedDistricts: ["ALL"], active: true,
+        passwordHash: "37tjuo29920e7f", salt: "29920e7f705f0f1f3583ae7d7b653b9c",
+        createdAt: 1775870098881,
+      },
+      {
+        name: "Andy Ragoobar", email: "pfbcphi3@gov.tt",
+        role: "Public Health Inspector III", initials: "AR", phone: "7762360",
+        assignedDistricts: ["ALL"], active: true,
+        passwordHash: "6pdw3pc094cb98", salt: "c094cb9821d87864fb5917c404773042",
+        createdAt: 1776624408759,
+      },
+      {
+        name: "Ria Pearie-Braithwaite", email: "pfbcphi2@gov.tt",
+        role: "Public Health Inspector II", initials: "RP", phone: "",
+        assignedDistricts: ["ALL"], active: true,
+        passwordHash: "h5h02y9ad10dc8", salt: "9ad10dc852d8168b9401ddc5096a2faa",
+        createdAt: 1776626209109,
+      },
+      {
+        name: "Sasha Ramlogan", email: "pfbcphi1@gov.tt",
+        role: "Public Health Inspector I", initials: "SR", phone: "",
+        assignedDistricts: ["4592", "4695"], active: true,
+        passwordHash: "jdvwuaaab86e5d", salt: "aab86e5df0e744a39c3cdddb0e83cd03",
+        createdAt: 1776626245624,
+      },
+      {
+        name: "Sherwin Bacchus", email: "pfbcsf3@gov.tt",
+        role: "Sanitation Foreman III", initials: "SB", phone: "",
+        assignedDistricts: ["ALL"], active: true,
+        passwordHash: "tf04ua2813aecb", salt: "2813aecb5ba69e319c9a0e18a0eb0dc3",
+        createdAt: 1776626379903,
+      },
+      {
+        name: "Tricia Khan Moonesar", email: "pfbcsf2@gov.tt",
+        role: "Sanitation Foreman II", initials: "TK", phone: "",
+        assignedDistricts: ["ALL"], active: true,
+        passwordHash: "walvs679eb5878", salt: "79eb587849ae9ca534bf6d19055b1517",
+        createdAt: 1776626443778,
+      },
+      {
+        name: "Farrah Roberts", email: "pfbcphi11@gov.tt",
+        role: "Public Health Inspector I", initials: "FR", phone: "",
+        assignedDistricts: ["ALL"], active: true,
+        passwordHash: "b5tv0o1a44794d", salt: "1a44794d816652787be072e0f6d9189b",
+        createdAt: 1776626509923,
+      },
+    ];
+
+    const existingUsers = await ctx.db.query("users").collect();
+    let usersCreated = 0, usersUpdated = 0;
+    for (const userData of usersData) {
+      const existing = existingUsers.find((u: any) => u.email === userData.email);
+      if (existing) {
+        await ctx.db.patch(existing._id, userData);
+        usersUpdated++;
+      } else {
+        await ctx.db.insert("users", userData as any);
+        usersCreated++;
+      }
+    }
+
+    return {
+      success: true,
+      roles:  { created: rolesCreated,  updated: rolesUpdated  },
+      users:  { created: usersCreated,  updated: usersUpdated  },
+    };
+  },
+});

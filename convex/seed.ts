@@ -91,33 +91,34 @@ export const seedIssues = mutation({
     const existing = await ctx.db.query("issues").first();
     if (existing) return { success: false, message: "Issues already seeded" };
 
-    // Real IDs from the database
-    const USERS = {
-      moh:   "k576s4c3x55zdvt1z0j5q13pgs84mmn9" as any, // Dr. Surendra Dhanraj
-      phi3:  "k574ep55wwd8rst050bc9swdnh8548za" as any,  // Andy Ragoobar
-    };
+    // ── Dynamic lookups (works on any deployment) ────────────────────────────
+    const allUsers = await ctx.db.query("users").collect();
+    const allCats  = await ctx.db.query("categories").collect();
+    const allDists = await ctx.db.query("districts").collect();
+    if (allDists.length === 0) return { success: false, message: "Run seed:seedDistricts first" };
+    if (allCats.length  === 0) return { success: false, message: "Run seed:seedAll first" };
+    if (allUsers.length === 0) return { success: false, message: "Run seed:seedAll first" };
+
+    const adminUser = allUsers.find((u: any) => u.role === "Medical Officer of Health") ?? allUsers[0];
+    const phi3User  = allUsers.find((u: any) => u.role === "Public Health Inspector III") ?? adminUser;
+    const pickCat  = (n: string) => allCats.find((c: any) => c.name.toLowerCase().includes(n.toLowerCase()))?._id;
+    const pickDist = (code: string) => allDists.find((d: any) => d.code === code)?._id;
+
+    const USERS = { moh: adminUser._id as any, phi3: phi3User._id as any };
     const CAT = {
-      drainage:   "kd7f1f3bq6jnhsmynvfsfag7s184mw98" as any,
-      garbage:    "kd79bah4y7x1bn5sdh8wk8bhpn84ng1p" as any,
-      mosquito:   "kd71eth9xcfdw31j79nr1m1pqx84mf6z" as any,
-      food:       "kd7dybf8ypccprhmen2hc3p00584m14b" as any,
-      water:      "kd78jqsd8yf74sahgmsb2swyjn84n9sf" as any,
-      animal:     "kd702rw9d5eqvhq3ptbscpb7w984nrbm" as any,
-      enviro:     "kd7fq2pd331ttfpnjvrhnf6z0n84nce8" as any,
-      noise:      "kd7ak9d5jpp8j0mx07kcmzw74184ndk1" as any,
-      rodent:     "kd7akk0f02fz6z1j3xxhth3rd584m8t5" as any,
-      nuisance:   "kd74dtyvtc0wr9s840rcrjv07h84n0an" as any,
+      drainage: pickCat("Drainage")   as any, garbage:  pickCat("Garbage")  as any,
+      mosquito: pickCat("Mosquito")   as any, food:     pickCat("Food")     as any,
+      water:    pickCat("Water")      as any, animal:   pickCat("Animal")   as any,
+      enviro:   pickCat("Environment") as any, noise:  pickCat("Noise")   as any,
+      rodent:   pickCat("Rodent")     as any, nuisance: pickCat("Nuisance") as any,
     };
     const DIST = {
-      erin:      "j57fb3rab4jygc9s0zwg1rmhrh84m3nc" as any,
-      newVillage:"j57ebpj4r1atp6c85ef5tr6yh984njxx" as any,
-      capDeville:"j573t0qan7y1jv4ykej01382ds84n9n9" as any,
-      techier:   "j5713j5nytv35w7yyw5xp6xa8d84ne4h" as any,
-      egypt:     "j579xsgpwa9r8jjx5cwrcnh2k584nbgq" as any,
-      newlands:  "j57ewfgs74jmj2mdg7b5d7w80d84nmvh" as any,
-      hollywood: "j57494wbhknfeypmavgsggxvbd84nfjx" as any,
-      cedros:    "j57cdhjnpep2hcm554gc91qhqh84mp60" as any,
+      erin:      pickDist("4585") as any, newVillage: pickDist("4591") as any,
+      capDeville:pickDist("4592") as any, techier:    pickDist("4695") as any,
+      egypt:     pickDist("4706") as any, newlands:   pickDist("4710") as any,
+      hollywood: pickDist("4765") as any, cedros:     pickDist("4790") as any,
     };
+    // ────────────────────────────────────────────────────────────────────────
 
     const now = Date.now();
     const day = 86_400_000;
@@ -375,32 +376,34 @@ export const seedIssues2 = mutation({
     const all = await ctx.db.query("issues").collect();
     if (all.length >= 40) return { success: false, message: "Already have plenty of issues" };
 
-    const USERS = {
-      moh:  "k576s4c3x55zdvt1z0j5q13pgs84mmn9" as any,
-      phi3: "k574ep55wwd8rst050bc9swdnh8548za"  as any,
-    };
+    // ── Dynamic lookups (works on any deployment) ────────────────────────────
+    const allUsers = await ctx.db.query("users").collect();
+    const allCats  = await ctx.db.query("categories").collect();
+    const allDists = await ctx.db.query("districts").collect();
+    if (allDists.length === 0) return { success: false, message: "Run seed:seedDistricts first" };
+    if (allCats.length  === 0) return { success: false, message: "Run seed:seedAll first" };
+    if (allUsers.length === 0) return { success: false, message: "Run seed:seedAll first" };
+
+    const adminUser = allUsers.find((u: any) => u.role === "Medical Officer of Health") ?? allUsers[0];
+    const phi3User  = allUsers.find((u: any) => u.role === "Public Health Inspector III") ?? adminUser;
+    const pickCat  = (n: string) => allCats.find((c: any) => c.name.toLowerCase().includes(n.toLowerCase()))?._id;
+    const pickDist = (code: string) => allDists.find((d: any) => d.code === code)?._id;
+
+    const USERS = { moh: adminUser._id as any, phi3: phi3User._id as any };
     const CAT = {
-      drainage:   "kd7f1f3bq6jnhsmynvfsfag7s184mw98" as any,
-      garbage:    "kd79bah4y7x1bn5sdh8wk8bhpn84ng1p" as any,
-      mosquito:   "kd71eth9xcfdw31j79nr1m1pqx84mf6z" as any,
-      food:       "kd7dybf8ypccprhmen2hc3p00584m14b" as any,
-      water:      "kd78jqsd8yf74sahgmsb2swyjn84n9sf" as any,
-      animal:     "kd702rw9d5eqvhq3ptbscpb7w984nrbm" as any,
-      enviro:     "kd7fq2pd331ttfpnjvrhnf6z0n84nce8" as any,
-      noise:      "kd7ak9d5jpp8j0mx07kcmzw74184ndk1" as any,
-      rodent:     "kd7akk0f02fz6z1j3xxhth3rd584m8t5" as any,
-      nuisance:   "kd74dtyvtc0wr9s840rcrjv07h84n0an" as any,
+      drainage: pickCat("Drainage")   as any, garbage:  pickCat("Garbage")  as any,
+      mosquito: pickCat("Mosquito")   as any, food:     pickCat("Food")     as any,
+      water:    pickCat("Water")      as any, animal:   pickCat("Animal")   as any,
+      enviro:   pickCat("Environment") as any, noise:  pickCat("Noise")   as any,
+      rodent:   pickCat("Rodent")     as any, nuisance: pickCat("Nuisance") as any,
     };
     const DIST = {
-      erin:      "j57fb3rab4jygc9s0zwg1rmhrh84m3nc" as any,
-      newVillage:"j57ebpj4r1atp6c85ef5tr6yh984njxx" as any,
-      capDeville:"j573t0qan7y1jv4ykej01382ds84n9n9" as any,
-      techier:   "j5713j5nytv35w7yyw5xp6xa8d84ne4h" as any,
-      egypt:     "j579xsgpwa9r8jjx5cwrcnh2k584nbgq" as any,
-      newlands:  "j57ewfgs74jmj2mdg7b5d7w80d84nmvh" as any,
-      hollywood: "j57494wbhknfeypmavgsggxvbd84nfjx" as any,
-      cedros:    "j57cdhjnpep2hcm554gc91qhqh84mp60" as any,
+      erin:      pickDist("4585") as any, newVillage: pickDist("4591") as any,
+      capDeville:pickDist("4592") as any, techier:    pickDist("4695") as any,
+      egypt:     pickDist("4706") as any, newlands:   pickDist("4710") as any,
+      hollywood: pickDist("4765") as any, cedros:     pickDist("4790") as any,
     };
+    // ────────────────────────────────────────────────────────────────────────
 
     // Demo image URLs (served from public/demo/)
     const IMG = {

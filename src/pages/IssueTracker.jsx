@@ -21,8 +21,19 @@ export default function IssueTracker() {
   const { token, user } = useAuth();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
   const [districtFilter, setDistrictFilter] = useState(undefined);
   const [catFilter, setCatFilter] = useState(undefined);
+  const [sortCol, setSortCol] = useState('createdAt');
+  const [sortDir, setSortDir] = useState('desc');
+
+  const handleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(col); setSortDir('asc'); }
+  };
+
+  const PRIORITY_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 };
+  const STATUS_ORDER   = { created: 0, open: 0, in_progress: 1, closed: 2 };
 
   const issues = useQuery(api.issues.listIssues, {
     token,
@@ -37,9 +48,30 @@ export default function IssueTracker() {
   const districtMap = Object.fromEntries((districts || []).map(d => [d._id, d]));
 
   const filtered = (issues || []).filter(i => {
-    if (!search) return true;
-    return i.title.toLowerCase().includes(search.toLowerCase()) ||
-      (i.address || '').toLowerCase().includes(search.toLowerCase());
+    if (search && !i.title.toLowerCase().includes(search.toLowerCase()) &&
+        !(i.address || '').toLowerCase().includes(search.toLowerCase())) return false;
+    if (priorityFilter && i.priority !== priorityFilter) return false;
+    return true;
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
+    let av, bv;
+    switch (sortCol) {
+      case 'title':    av = a.title.toLowerCase();       bv = b.title.toLowerCase();       break;
+      case 'category': av = catMap[a.categoryId]?.name || ''; bv = catMap[b.categoryId]?.name || ''; break;
+      case 'district': av = districtMap[a.districtId]?.name || ''; bv = districtMap[b.districtId]?.name || ''; break;
+      case 'priority': av = PRIORITY_ORDER[a.priority] ?? 9; bv = PRIORITY_ORDER[b.priority] ?? 9; break;
+      case 'status':   av = STATUS_ORDER[a.status] ?? 9;   bv = STATUS_ORDER[b.status] ?? 9;   break;
+      case 'progress': {
+        const at = a.subtasks?.length || 0; const ad = a.subtasks?.filter(s => s.completed).length || 0;
+        const bt = b.subtasks?.length || 0; const bd = b.subtasks?.filter(s => s.completed).length || 0;
+        av = at ? ad / at : -1; bv = bt ? bd / bt : -1; break;
+      }
+      default: av = a.createdAt; bv = b.createdAt;
+    }
+    if (av < bv) return sortDir === 'asc' ? -1 : 1;
+    if (av > bv) return sortDir === 'asc' ?  1 : -1;
+    return 0;
   });
 
   const userDistricts = user?.assignedDistricts?.includes('ALL')
@@ -52,7 +84,7 @@ export default function IssueTracker() {
         <div>
           <div className="page-title">Issue Tracker</div>
           <div className="page-subtitle">
-            {filtered.length} issue{filtered.length !== 1 ? 's' : ''} found
+            {sorted.length} issue{sorted.length !== 1 ? 's' : ''} found
           </div>
         </div>
         <Link to="/issues/new" className="btn btn-primary">
@@ -74,12 +106,9 @@ export default function IssueTracker() {
         <select className="form-control" style={{ width: 'auto', minWidth: 140 }}
           value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           <option value="">All Statuses</option>
-          <option value="open">Open</option>
-          <option value="in_progress">In Progress</option>
-          <option value="critical">Critical</option>
-          <option value="pending">Pending</option>
-          <option value="resolved">Resolved</option>
-          <option value="closed">Closed</option>
+          <option value="created">🔵 Created</option>
+          <option value="in_progress">🟡 In Progress</option>
+          <option value="closed">⚫ Closed</option>
         </select>
         <select className="form-control" style={{ width: 'auto', minWidth: 160 }}
           value={districtFilter || ''} onChange={e => setDistrictFilter(e.target.value || undefined)}>
@@ -93,15 +122,55 @@ export default function IssueTracker() {
         </select>
       </div>
 
-      {/* Status summary chips */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {['open', 'in_progress', 'critical', 'pending', 'resolved'].map(s => {
-          const count = (issues || []).filter(i => i.status === s).length;
+      {/* Status chips */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Status:</span>
+        {[
+          { value: 'created',     label: 'Created',     dot: '🔵' },
+          { value: 'in_progress', label: 'In Progress', dot: '🟡' },
+          { value: 'closed',      label: 'Closed',      dot: '⚫' },
+        ].map(s => {
+          const count = (issues || []).filter(i =>
+            i.status === s.value || (s.value === 'created' && i.status === 'open')
+          ).length;
+          const active = statusFilter === s.value;
           return (
-            <button key={s} onClick={() => setStatusFilter(statusFilter === s ? '' : s)}
-              className={`badge badge-${s}`}
-              style={{ cursor: 'pointer', border: 'none', fontSize: 12.5, padding: '4px 11px' }}>
-              {count} {s.replace('_', ' ')}
+            <button key={s.value}
+              onClick={() => setStatusFilter(active ? '' : s.value)}
+              className={`badge badge-${s.value}`}
+              style={{
+                cursor: 'pointer', border: active ? '2px solid currentColor' : '2px solid transparent',
+                fontSize: 12.5, padding: '4px 11px', opacity: active ? 1 : 0.75,
+              }}>
+              {s.dot} {count} {s.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Priority chips */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Priority:</span>
+        {[
+          { value: 'urgent', label: 'Urgent', dot: '🚨', color: '#dc2626', bg: 'rgba(220,38,38,0.1)',  border: 'rgba(220,38,38,0.4)' },
+          { value: 'high',   label: 'High',   dot: '🔴', color: '#ef4444', bg: 'rgba(239,68,68,0.1)',  border: 'rgba(239,68,68,0.35)' },
+          { value: 'medium', label: 'Medium', dot: '🟡', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.35)' },
+          { value: 'low',    label: 'Low',    dot: '🟢', color: '#10b981', bg: 'rgba(16,185,129,0.1)', border: 'rgba(16,185,129,0.35)' },
+        ].map(p => {
+          const count = (issues || []).filter(i => i.priority === p.value).length;
+          const active = priorityFilter === p.value;
+          return (
+            <button key={p.value}
+              onClick={() => setPriorityFilter(active ? '' : p.value)}
+              style={{
+                cursor: 'pointer', fontSize: 12.5, padding: '4px 11px',
+                borderRadius: 20, fontWeight: 600,
+                background: p.bg, color: p.color,
+                border: active ? `2px solid ${p.border}` : '2px solid transparent',
+                opacity: active ? 1 : 0.75,
+                transition: 'all 0.15s',
+              }}>
+              {p.dot} {count} {p.label}
             </button>
           );
         })}
@@ -124,17 +193,19 @@ export default function IssueTracker() {
           <table>
             <thead>
               <tr>
-                <th>Issue</th>
-                <th>Category</th>
-                <th>District</th>
-                <th>Priority</th>
-                <th>Status</th>
-                <th>Reported</th>
-                <th>Progress</th>
+                {[['title','Issue'],['category','Category'],['district','District'],['priority','Priority'],['status','Status'],['createdAt','Reported'],['progress','Progress']].map(([col,label]) => (
+                  <th key={col} onClick={() => handleSort(col)}
+                    style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+                    {label}
+                    {sortCol === col
+                      ? <span style={{ marginLeft: 5, opacity: 0.7 }}>{sortDir === 'asc' ? '▲' : '▼'}</span>
+                      : <span style={{ marginLeft: 5, opacity: 0.2 }}>⇅</span>}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map(issue => {
+              {sorted.map(issue => {
                 const cat = catMap[issue.categoryId];
                 const district = districtMap[issue.districtId];
                 const done = issue.subtasks?.filter(s => s.completed).length || 0;

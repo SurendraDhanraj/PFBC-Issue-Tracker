@@ -68,6 +68,8 @@ export const createIssue = mutation({
     streetId: v.optional(v.id("streets")),
     address: v.optional(v.string()),
     assignedTo: v.optional(v.id("users")),
+    lat: v.optional(v.number()),
+    lng: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const user = await getSessionUser(ctx, args.token);
@@ -79,7 +81,7 @@ export const createIssue = mutation({
       title: args.title,
       description: args.description,
       categoryId: args.categoryId,
-      status: "open",
+      status: "created",
       priority: args.priority as any,
       districtId: args.districtId,
       streetId: args.streetId,
@@ -88,6 +90,8 @@ export const createIssue = mutation({
       reportedBy: user._id,
       notes: [],
       subtasks: [],
+      lat: args.lat,
+      lng: args.lng,
       createdAt: now,
       updatedAt: now,
     });
@@ -108,6 +112,8 @@ export const updateIssue = mutation({
     districtId: v.optional(v.id("districts")),
     streetId: v.optional(v.id("streets")),
     address: v.optional(v.string()),
+    lat: v.optional(v.number()),
+    lng: v.optional(v.number()),
   },
   handler: async (ctx, { token, issueId, ...updates }) => {
     const user = await getSessionUser(ctx, token);
@@ -151,16 +157,23 @@ export const addNote = mutation({
       text,
       authorId: user._id,
       authorName: user.name,
+      authorRole: user.role,
       timestamp: Date.now(),
     };
     if (storageId) note.storageId = storageId;
     if (mediaType) note.mediaType = mediaType;
     if (mediaName) note.mediaName = mediaName;
 
-    await ctx.db.patch(issueId, {
+    const patch: any = {
       notes: [...issue.notes, note],
       updatedAt: Date.now(),
-    });
+    };
+    // Auto-advance: created → in_progress on first activity
+    if (issue.status === "created") {
+      patch.status = "in_progress";
+    }
+
+    await ctx.db.patch(issueId, patch);
     return { success: true };
   },
 });
@@ -234,6 +247,70 @@ export const toggleSubtask = mutation({
   },
 });
 
+export const updateSubtask = mutation({
+  args: {
+    token: v.string(),
+    issueId: v.id("issues"),
+    subtaskId: v.string(),
+    title: v.string(),
+    assignedTo: v.optional(v.id("users")),
+  },
+  handler: async (ctx, { token, issueId, subtaskId, title, assignedTo }) => {
+    const user = await getSessionUser(ctx, token);
+    if (!user) return { success: false, error: "Unauthorized" };
+    if (!SUPERVISOR_ROLES.includes(user.role)) {
+      return { success: false, error: "Only Supervisors+ can manage subtasks" };
+    }
+
+    const issue = await ctx.db.get(issueId);
+    if (!issue) return { success: false, error: "Not found" };
+
+    let assignedName: string | undefined;
+    if (assignedTo) {
+      const assignee = await ctx.db.get(assignedTo);
+      assignedName = assignee?.name;
+    }
+
+    const subtasks = issue.subtasks.map((s: any) => {
+      if (s.id !== subtaskId) return s;
+      const updated: any = { ...s, title };
+      if (assignedTo) {
+        updated.assignedTo = assignedTo;
+        updated.assignedName = assignedName;
+      } else {
+        delete updated.assignedTo;
+        delete updated.assignedName;
+      }
+      return updated;
+    });
+
+    await ctx.db.patch(issueId, { subtasks, updatedAt: Date.now() });
+    return { success: true };
+  },
+});
+
+export const deleteSubtask = mutation({
+  args: {
+    token: v.string(),
+    issueId: v.id("issues"),
+    subtaskId: v.string(),
+  },
+  handler: async (ctx, { token, issueId, subtaskId }) => {
+    const user = await getSessionUser(ctx, token);
+    if (!user) return { success: false, error: "Unauthorized" };
+    if (!SUPERVISOR_ROLES.includes(user.role)) {
+      return { success: false, error: "Only Supervisors+ can manage subtasks" };
+    }
+
+    const issue = await ctx.db.get(issueId);
+    if (!issue) return { success: false, error: "Not found" };
+
+    const subtasks = issue.subtasks.filter((s: any) => s.id !== subtaskId);
+    await ctx.db.patch(issueId, { subtasks, updatedAt: Date.now() });
+    return { success: true };
+  },
+});
+
 export const generateUploadUrl = mutation({
   args: { token: v.string() },
   handler: async (ctx, { token }) => {
@@ -249,6 +326,32 @@ export const getFileUrl = query({
     return await ctx.storage.getUrl(storageId);
   },
 });
+
+export const deleteIssue = mutation({
+  args: { token: v.string(), issueId: v.id("issues") },
+  handler: async (ctx, { token, issueId }) => {
+    const user = await getSessionUser(ctx, token);
+    if (!user) return { success: false, error: "Unauthorized" };
+    if (user.role !== "Medical Officer of Health")
+      return { success: false, error: "Only the Medical Officer of Health can delete issues" };
+    await ctx.db.delete(issueId);
+    return { success: true };
+  },
+});
+
+export const deleteAllIssues = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    const user = await getSessionUser(ctx, token);
+    if (!user) return { success: false, error: "Unauthorized" };
+    if (user.role !== "Medical Officer of Health")
+      return { success: false, error: "Only the Medical Officer of Health can delete all issues" };
+    const issues = await ctx.db.query("issues").collect();
+    for (const issue of issues) await ctx.db.delete(issue._id);
+    return { success: true, count: issues.length };
+  },
+});
+
 
 export const getDashboardStats = query({
   args: { token: v.string(), districtId: v.optional(v.id("districts")) },
@@ -269,16 +372,39 @@ export const getDashboardStats = query({
     }
     if (districtId) issues = issues.filter((i: any) => i.districtId === districtId);
 
-    const open = issues.filter((i: any) => i.status === "open").length;
+    // Status counts
+    const created    = issues.filter((i: any) => i.status === "created" || i.status === "open").length;
     const inProgress = issues.filter((i: any) => i.status === "in_progress").length;
-    const critical = issues.filter((i: any) => i.status === "critical").length;
-    const resolved = issues.filter((i: any) => i.status === "resolved" || i.status === "closed").length;
-    const pending = issues.filter((i: any) => i.status === "pending").length;
+    const closed     = issues.filter((i: any) => i.status === "closed" || i.status === "resolved").length;
+
+    // Priority counts
+    const urgent = issues.filter((i: any) => i.priority === "urgent").length;
+    const high   = issues.filter((i: any) => i.priority === "high").length;
+    const medium = issues.filter((i: any) => i.priority === "medium").length;
+    const low    = issues.filter((i: any) => i.priority === "low").length;
+
+    // Monthly new issues — past 12 calendar months
+    const now = new Date();
+    const monthly = Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
+      const yr = d.getFullYear();
+      const mo = d.getMonth();
+      const count = issues.filter((iss: any) => {
+        const cd = new Date(iss.createdAt);
+        return cd.getFullYear() === yr && cd.getMonth() === mo;
+      }).length;
+      return {
+        label: d.toLocaleString("en-TT", { month: "short" }),
+        year: yr,
+        month: mo,
+        count,
+      };
+    });
 
     const recent = issues
       .sort((a: any, b: any) => b.createdAt - a.createdAt)
       .slice(0, 8);
 
-    return { open, inProgress, critical, resolved, pending, total: issues.length, recent };
+    return { created, inProgress, closed, total: issues.length, urgent, high, medium, low, monthly, recent };
   },
 });

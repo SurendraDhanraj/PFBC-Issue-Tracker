@@ -17,6 +17,8 @@ import type * as leave from "../leave.js";
 import type * as roles from "../roles.js";
 import type * as seed from "../seed.js";
 import type * as seedDistricts from "../seedDistricts.js";
+import type * as seedIssues from "../seedIssues.js";
+import type * as settings from "../settings.js";
 import type * as users from "../users.js";
 
 import type {
@@ -35,6 +37,8 @@ declare const fullApi: ApiFromModules<{
   roles: typeof roles;
   seed: typeof seed;
   seedDistricts: typeof seedDistricts;
+  seedIssues: typeof seedIssues;
+  settings: typeof settings;
   users: typeof users;
 }>;
 

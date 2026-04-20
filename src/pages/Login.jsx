@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { useAuth } from '../context/AuthContext';
+import { useBranding } from '../context/BrandingContext';
+import { Link } from 'react-router-dom';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -9,6 +11,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+  const { appName, tagline, splashUrl, logoIcon } = useBranding();
   const seedMutation = useMutation(api.seed.seedAll);
   const seedDistrictsMutation = useMutation(api.seedDistricts.seedDistricts);
 
@@ -34,9 +37,13 @@ export default function Login() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="login-logo">🏥</div>
-        <h1 className="login-title">Point Fortin</h1>
-        <p className="login-subtitle">Public Health Administration System</p>
+        <div className="login-logo">
+          {splashUrl
+            ? <img src={splashUrl} alt="logo" style={{ width: 64, height: 64, objectFit: 'contain', borderRadius: 12 }} />
+            : logoIcon}
+        </div>
+        <h1 className="login-title">{appName}</h1>
+        <p className="login-subtitle">{tagline}</p>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {error && (
@@ -81,18 +88,17 @@ export default function Login() {
           >
             {loading ? '⏳ Signing in...' : '🔐 Sign In'}
           </button>
+          <Link
+            to="/forgot-password"
+            style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-muted)', textDecoration: 'none' }}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--blue-400)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+          >
+            Forgot your password?
+          </Link>
         </form>
-
-        <div style={{ marginTop: 24, padding: '14px 16px', background: 'rgba(59,130,246,0.08)', borderRadius: 8, border: '1px solid rgba(59,130,246,0.15)' }}>
-          <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Default Admin Credentials</div>
-          <div style={{ fontSize: 13, color: 'var(--blue-300)' }}>📧 admin@pf.health.gov.tt</div>
-          <div style={{ fontSize: 13, color: 'var(--blue-300)' }}>🔑 Admin@1234</div>
-        </div>
-
-        <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', marginTop: 20 }}>
-          Point Fortin Borough Corporation · Public Health Division
-        </p>
       </div>
     </div>
+
   );
 }

@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth, usePermissions } from '../context/AuthContext';
+import { useBranding } from '../context/BrandingContext';
 
 const NAV_SECTIONS = [
   {
@@ -35,6 +36,7 @@ export default function Sidebar() {
   const { user, logout } = useAuth();
   const { can } = usePermissions();
   const location = useLocation();
+  const { appName, faviconUrl, logoIcon } = useBranding();
 
   if (!user) return null;
 
@@ -43,9 +45,13 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <div className="sidebar-logo-icon">🏥</div>
+        <div className="sidebar-logo-icon">
+          {faviconUrl
+            ? <img src={faviconUrl} alt="logo" style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: 6 }} />
+            : logoIcon}
+        </div>
         <div className="sidebar-logo-text">
-          <span className="sidebar-logo-title">Point Fortin</span>
+          <span className="sidebar-logo-title">{appName}</span>
           <span className="sidebar-logo-sub">Public Health</span>
         </div>
       </div>

@@ -1,19 +1,34 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../convex/_generated/api';
 import { useAuth } from '../context/AuthContext';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Fix Leaflet's default icon paths (broken in Vite builds)
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
+
+/** Listens for map clicks and passes back the lat/lng */
+function MapClickHandler({ onPin }) {
+  useMapEvents({
+    click(e) {
+      onPin(e.latlng);
+    },
+  });
+  return null;
+}
 
 export default function NewIssue() {
   const { token, user } = useAuth();
   const navigate = useNavigate();
   const createIssue = useMutation(api.issues.createIssue);
-
-  const categories = useQuery(api.categories.listCategories);
-  const districts = useQuery(api.districts.listDistricts);
-  const [selectedDistrict, setSelectedDistrict] = useState('');
-  const streets = useQuery(api.districts.listStreets, selectedDistrict ? { districtId: selectedDistrict } : 'skip');
-  const users = useQuery(api.users.listUsers, { token });
 
   const [form, setForm] = useState({
     title: '',
@@ -25,14 +40,25 @@ export default function NewIssue() {
     address: '',
     assignedTo: '',
   });
+  const [pin, setPin] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const categories = useQuery(api.categories.listCategories);
+  const districts = useQuery(api.districts.listDistricts);
+  const streets = useQuery(api.districts.listStreets, form.districtId ? { districtId: form.districtId } : 'skip');
+  const users = useQuery(api.users.listUsers, { token });
+
 
   const userDistricts = user?.assignedDistricts?.includes('ALL')
     ? districts || []
     : (districts || []).filter(d => user?.assignedDistricts?.includes(d.code));
 
   const set = (field, val) => setForm(f => ({ ...f, [field]: val }));
+
+  const handlePin = useCallback((latlng) => {
+    setPin({ lat: parseFloat(latlng.lat.toFixed(6)), lng: parseFloat(latlng.lng.toFixed(6)) });
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -53,6 +79,8 @@ export default function NewIssue() {
         streetId: form.streetId || undefined,
         address: form.address || undefined,
         assignedTo: form.assignedTo || undefined,
+        lat: pin?.lat,
+        lng: pin?.lng,
       });
       if (res.success) {
         navigate(`/issues/${res.id}`);
@@ -66,8 +94,11 @@ export default function NewIssue() {
     }
   };
 
+  // Trinidad & Tobago centre
+  const defaultCenter = [10.6918, -61.2225];
+
   return (
-    <div className="slide-up" style={{ maxWidth: 720, margin: '0 auto' }}>
+    <div className="slide-up" style={{ maxWidth: 760, margin: '0 auto' }}>
       <div className="page-header">
         <div>
           <div className="page-title">Log New Issue</div>
@@ -122,7 +153,7 @@ export default function NewIssue() {
             <div className="form-group">
               <label className="form-label">Electoral District *</label>
               <select className="form-control" value={form.districtId}
-                onChange={e => { set('districtId', e.target.value); set('streetId', ''); setSelectedDistrict(e.target.value); }} required>
+                onChange={e => { set('districtId', e.target.value); set('streetId', ''); }} required>
                 <option value="">Select district</option>
                 {userDistricts.map(d => (
                   <option key={d._id} value={d._id}>{d.name || d.code}</option>
@@ -144,6 +175,67 @@ export default function NewIssue() {
             <label className="form-label">Address / Landmark</label>
             <input className="form-control" placeholder="e.g. 45 Erin Road, near the market"
               value={form.address} onChange={e => set('address', e.target.value)} />
+          </div>
+
+          {/* ── Minimap ── */}
+          <div className="form-group">
+            <label className="form-label">
+              📌 Pin Location on Map
+              <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 6 }}>
+                (click the map to drop a pin)
+              </span>
+            </label>
+            <div style={{
+              borderRadius: 'var(--radius)',
+              overflow: 'hidden',
+              border: '1px solid var(--border)',
+              height: 280,
+              position: 'relative',
+            }}>
+              <MapContainer
+                center={defaultCenter}
+                zoom={10}
+                style={{ height: '100%', width: '100%' }}
+                scrollWheelZoom={true}
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <MapClickHandler onPin={handlePin} />
+                {pin && <Marker position={[pin.lat, pin.lng]} />}
+              </MapContainer>
+            </div>
+
+            {/* Coordinates display */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 12, marginTop: 8,
+              padding: '8px 12px',
+              background: pin ? 'var(--blue-50)' : 'var(--surface-hover)',
+              border: `1px solid ${pin ? 'var(--blue-100)' : 'var(--border)'}`,
+              borderRadius: 'var(--radius-sm)',
+              fontSize: 12.5,
+            }}>
+              {pin ? (
+                <>
+                  <span style={{ color: 'var(--blue-600)', fontWeight: 700 }}>📍 Pinned</span>
+                  <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                    Lat: <strong>{pin.lat}</strong>
+                  </span>
+                  <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                    Long: <strong>{pin.lng}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: 11 }}
+                    onClick={() => setPin(null)}
+                  >✕ Clear</button>
+                </>
+              ) : (
+                <span style={{ color: 'var(--text-muted)' }}>No location pinned — click the map to set coordinates</span>
+              )}
+            </div>
           </div>
 
           <div className="form-group">

@@ -107,7 +107,7 @@ export function useRoleCheck() {
     isSupervisor:      can('issues', 'admin'),
     isSenior:          can('issues', 'write'),
     canCreateIssues:   can('issues', 'write'),
-    canCloseIssues:    can('issues', 'admin'),
+    canCloseIssues:    user?.role === 'Medical Officer of Health' || user?.role === 'Public Health Inspector III',
     canManageSubtasks: can('issues', 'admin'),
     canManageUsers:    can('staffManagement', 'admin'),
     canUploadCSV:      can('adminPanel', 'admin'),

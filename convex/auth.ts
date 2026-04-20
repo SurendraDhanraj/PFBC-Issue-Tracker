@@ -159,3 +159,127 @@ export const createInitialAdmin = mutation({
     return { success: true };
   },
 });
+
+// ── Password Reset Flow ───────────────────────────────────────────────────────
+
+/** Step 1: user submits their email. Always returns success to avoid enumeration. */
+export const requestPasswordReset = mutation({
+  args: { email: v.string() },
+  handler: async (ctx, { email }) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", email.toLowerCase()))
+      .first();
+
+    // Always succeed so we don't reveal whether the email exists
+    if (!user || !user.active) return { success: true };
+
+    // Expire any existing reset requests for this email
+    const existing = await ctx.db
+      .query("passwordResets")
+      .withIndex("by_email", (q) => q.eq("email", email.toLowerCase()))
+      .collect();
+    for (const r of existing) await ctx.db.delete(r._id);
+
+    // 6-digit code + opaque lookup token
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const token = generateSalt() + generateSalt();
+    const expiresAt = Date.now() + 2 * 60 * 60 * 1000; // 2 hours
+
+    await ctx.db.insert("passwordResets", {
+      userId: user._id,
+      email: email.toLowerCase(),
+      code,
+      token,
+      expiresAt,
+      used: false,
+    });
+
+    return { success: true };
+  },
+});
+
+/** Admin query: list all pending, unexpired, unused reset requests */
+export const listPendingResets = query({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    const session = await ctx.db
+      .query("sessions")
+      .withIndex("by_token", (q) => q.eq("token", token))
+      .first();
+    if (!session) return [];
+    const admin = await ctx.db.get(session.userId);
+    if (!admin || admin.role !== "Medical Officer of Health") return [];
+
+    const now = Date.now();
+    const resets = await ctx.db.query("passwordResets").collect();
+    return resets
+      .filter((r) => !r.used && r.expiresAt > now)
+      .map((r) => ({
+        _id: r._id,
+        email: r.email,
+        code: r.code,
+        expiresAt: r.expiresAt,
+        createdAt: r.expiresAt - 2 * 60 * 60 * 1000,
+      }))
+      .sort((a, b) => b.createdAt - a.createdAt);
+  },
+});
+
+/** Step 2: validate the reset code without consuming it */
+export const validateResetCode = mutation({
+  args: { email: v.string(), code: v.string() },
+  handler: async (ctx, { email, code }) => {
+    const reset = await ctx.db
+      .query("passwordResets")
+      .withIndex("by_email", (q) => q.eq("email", email.toLowerCase()))
+      .first();
+    if (!reset || reset.used || reset.expiresAt < Date.now() || reset.code !== code) {
+      return { valid: false, error: "Invalid or expired code." };
+    }
+    return { valid: true, token: reset.token };
+  },
+});
+
+/** Step 3: set new password using the validated token */
+export const resetPassword = mutation({
+  args: { token: v.string(), newPassword: v.string() },
+  handler: async (ctx, { token, newPassword }) => {
+    const reset = await ctx.db
+      .query("passwordResets")
+      .withIndex("by_token", (q) => q.eq("token", token))
+      .first();
+    if (!reset || reset.used || reset.expiresAt < Date.now()) {
+      return { success: false, error: "Reset link is invalid or has expired." };
+    }
+    if (newPassword.length < 8) {
+      return { success: false, error: "Password must be at least 8 characters." };
+    }
+
+    // Hash new password
+    const salt = generateSalt();
+    let hash = salt + newPassword;
+    let result = 0;
+    for (let i = 0; i < 10000; i++) {
+      let temp = 0;
+      for (let j = 0; j < hash.length; j++) {
+        temp = ((temp << 5) - temp + hash.charCodeAt(j)) | 0;
+      }
+      result = result ^ temp;
+      hash = result.toString(36) + salt;
+    }
+    const passwordHash = Math.abs(result).toString(36) + salt.slice(0, 8);
+
+    await ctx.db.patch(reset.userId, { passwordHash, salt });
+    await ctx.db.patch(reset._id, { used: true });
+
+    // Invalidate all sessions for this user
+    const sessions = await ctx.db
+      .query("sessions")
+      .withIndex("by_user", (q) => q.eq("userId", reset.userId))
+      .collect();
+    for (const s of sessions) await ctx.db.delete(s._id);
+
+    return { success: true };
+  },
+});

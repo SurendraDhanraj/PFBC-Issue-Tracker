@@ -2,6 +2,27 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  // App branding (singleton — only one doc with key = "main")
+  appSettings: defineTable({
+    key: v.string(),                          // always "main"
+    appName: v.optional(v.string()),
+    tagline: v.optional(v.string()),
+    faviconStorageId: v.optional(v.id("_storage")),
+    splashStorageId: v.optional(v.id("_storage")),
+  }).index("by_key", ["key"]),
+
+  // Password resets
+  passwordResets: defineTable({
+    userId: v.id("users"),
+    email: v.string(),
+    code: v.string(),       // 6-digit code
+    token: v.string(),      // internal lookup token
+    expiresAt: v.number(),
+    used: v.boolean(),
+  })
+    .index("by_token", ["token"])
+    .index("by_email", ["email"]),
+
   // Auth
   users: defineTable({
     name: v.string(),
@@ -87,6 +108,7 @@ export default defineSchema({
         text: v.string(),
         authorId: v.string(),
         authorName: v.string(),
+        authorRole: v.optional(v.string()),
         timestamp: v.number(),
         storageId: v.optional(v.id("_storage")),
         mediaType: v.optional(v.string()),
@@ -103,11 +125,14 @@ export default defineSchema({
         assignedName: v.optional(v.string()),
         createdAt: v.number(),
         completedAt: v.optional(v.number()),
+        notes: v.optional(v.array(v.any())),
       })
     ),
     createdAt: v.number(),
     updatedAt: v.number(),
     closedAt: v.optional(v.number()),
+    lat: v.optional(v.number()),
+    lng: v.optional(v.number()),
   })
     .index("by_status", ["status"])
     .index("by_category", ["categoryId"])

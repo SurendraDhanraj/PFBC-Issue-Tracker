@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../../convex/_generated/api';
 import { useAuth, useRoleCheck } from '../context/AuthContext';
 import Modal, { ModalFooter } from '../components/Modal';
+import { useBranding } from '../context/BrandingContext';
 
 // ── Permission Matrix constants ─────────────────────────────────────────────
 const MODULES = [
@@ -129,6 +130,38 @@ export default function AdminPanel() {
   const createRole = useMutation(api.roles.createRole);
   const updateRole = useMutation(api.roles.updateRole);
   const seedRoles = useMutation(api.roles.seedDefaultRoles);
+  const deleteIssue    = useMutation(api.issues.deleteIssue);
+  const deleteAllIssues = useMutation(api.issues.deleteAllIssues);
+  const allIssues = useQuery(
+    tab === 'issues' ? api.issues.listIssues : 'skip',
+    tab === 'issues' ? { token } : 'skip'
+  );
+  const [issueSearch, setIssueSearch] = useState('');
+  const [issueDeleteMsg, setIssueDeleteMsg] = useState('');
+
+  const handleDeleteIssue = async (issueId, title) => {
+    if (!window.confirm(`Delete issue "${title}"?\nThis cannot be undone.`)) return;
+    const res = await deleteIssue({ token, issueId });
+    if (!res.success) alert(res.error);
+    else setIssueDeleteMsg('Issue deleted.');
+    setTimeout(() => setIssueDeleteMsg(''), 3000);
+  };
+
+  const handleDeleteAllIssues = async () => {
+    const first = window.confirm('⚠️ Delete ALL issues?\nThis is irreversible.');
+    if (!first) return;
+    const second = window.confirm('Are you absolutely sure? All issue data, notes & subtasks will be permanently removed.');
+    if (!second) return;
+    const res = await deleteAllIssues({ token });
+    if (!res.success) alert(res.error);
+    else setIssueDeleteMsg(`All ${res.count} issues deleted.`);
+    setTimeout(() => setIssueDeleteMsg(''), 4000);
+  };
+
+  const updateAppSettings = useMutation(api.settings.updateAppSettings);
+  const genBrandingUpload = useMutation(api.settings.generateBrandingUploadUrl);
+  const { appName: currentAppName, tagline: currentTagline, faviconUrl, splashUrl } = useBranding();
+  const pendingResets = useQuery(api.auth.listPendingResets, { token });
 
   const [catModal, setCatModal] = useState(false);
   const [catForm, setCatForm] = useState({ name: '', color: '#3b82f6', icon: '📌', description: '' });
@@ -141,6 +174,13 @@ export default function AdminPanel() {
   const [distModal, setDistModal] = useState(false);
   const [distForm, setDistForm] = useState({ name: '', code: '', corporation: 'Point Fortin Borough Corporation' });
   const fileRef = useRef();
+  const iconRef = useRef();
+  const splashRef = useRef();
+
+  // Branding state
+  const [brandForm, setBrandForm] = useState({ appName: '', tagline: '' });
+  const [brandLoading, setBrandLoading] = useState('');
+  const [brandMsg, setBrandMsg] = useState('');
 
   // Role state
   const [roleModal, setRoleModal] = useState(false);
@@ -225,6 +265,30 @@ export default function AdminPanel() {
     setSeedMsg(res.success ? `✅ Seeded ${res.count} default roles` : `⚠️ ${res.error}`);
   };
 
+  const handleBrandTextSave = async () => {
+    setBrandLoading('text');
+    await updateAppSettings({ token, appName: brandForm.appName || undefined, tagline: brandForm.tagline || undefined });
+    setBrandLoading('');
+    setBrandMsg('✅ Saved');
+    setTimeout(() => setBrandMsg(''), 3000);
+  };
+
+  const handleBrandUpload = async (file, field) => {
+    if (!file) return;
+    setBrandLoading(field);
+    try {
+      const uploadUrl = await genBrandingUpload({ token });
+      const res = await fetch(uploadUrl, { method: 'POST', body: file, headers: { 'Content-Type': file.type } });
+      const { storageId } = await res.json();
+      if (field === 'favicon') await updateAppSettings({ token, faviconStorageId: storageId });
+      else await updateAppSettings({ token, splashStorageId: storageId });
+      setBrandMsg(`✅ ${field === 'favicon' ? 'App icon' : 'Splash image'} updated`);
+      setTimeout(() => setBrandMsg(''), 3000);
+    } finally {
+      setBrandLoading('');
+    }
+  };
+
   const openEditRole = (role) => {
     setEditRole(role);
     setRoleForm({
@@ -238,10 +302,12 @@ export default function AdminPanel() {
   };
 
   const TABS = [
-    { key: 'categories', label: '📂 Categories' },
-    { key: 'leave', label: '📅 Leave Types' },
-    { key: 'districts', label: '🗺️ Districts' },
-    { key: 'roles', label: '👤 Roles' },
+    { key: 'branding',    label: '🎨 Branding' },
+    { key: 'categories',  label: '📂 Categories' },
+    { key: 'leave',       label: '📅 Leave Types' },
+    { key: 'districts',   label: '🗺️ Districts' },
+    { key: 'roles',       label: '👤 Roles' },
+    { key: 'issues',      label: '📋 Issues' },
   ];
 
   return (
@@ -258,6 +324,128 @@ export default function AdminPanel() {
           <div key={t.key} className={`tab ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>{t.label}</div>
         ))}
       </div>
+
+      {/* BRANDING */}
+      {tab === 'branding' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 600 }}>
+          {brandMsg && <div className="alert alert-success">{brandMsg}</div>}
+
+          {/* App Name & Tagline */}
+          <div className="card">
+            <div style={{ fontWeight: 700, marginBottom: 14 }}>📝 App Identity</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="form-group">
+                <label className="form-label">App Name</label>
+                <input className="form-control"
+                  placeholder={currentAppName}
+                  value={brandForm.appName}
+                  onChange={e => setBrandForm(f => ({ ...f, appName: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Tagline <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(shown on splash screen)</span></label>
+                <input className="form-control"
+                  placeholder={currentTagline}
+                  value={brandForm.tagline}
+                  onChange={e => setBrandForm(f => ({ ...f, tagline: e.target.value }))} />
+              </div>
+              <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }}
+                onClick={handleBrandTextSave} disabled={brandLoading === 'text'}>
+                {brandLoading === 'text' ? '⏳ Saving...' : '💾 Save Text'}
+              </button>
+            </div>
+          </div>
+
+          {/* App Icon / Favicon */}
+          <div className="card">
+            <div style={{ fontWeight: 700, marginBottom: 14 }}>🖼️ App Icon <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>(browser tab favicon + loading screen)</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+              <div style={{
+                width: 72, height: 72, borderRadius: 14, overflow: 'hidden',
+                border: '1.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'white', flexShrink: 0,
+              }}>
+                {faviconUrl
+                  ? <img src={faviconUrl} alt="icon" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  : <span style={{ fontSize: 30 }}>🏥</span>}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
+                  Recommended: square image, at least 256×256px. PNG or SVG preferred.
+                </div>
+                <input ref={iconRef} type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={e => handleBrandUpload(e.target.files?.[0], 'favicon')} />
+                <button className="btn btn-secondary" onClick={() => iconRef.current?.click()}
+                  disabled={brandLoading === 'favicon'}>
+                  {brandLoading === 'favicon' ? '⏳ Uploading...' : '📤 Upload Icon'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Splash / Loading Image */}
+          <div className="card">
+            <div style={{ fontWeight: 700, marginBottom: 14 }}>✨ Splash / Loading Image <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>(shown while app loads)</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+              <div style={{
+                width: 96, height: 96, borderRadius: 16, overflow: 'hidden',
+                border: '1.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'white', flexShrink: 0,
+              }}>
+                {splashUrl
+                  ? <img src={splashUrl} alt="splash" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  : <span style={{ fontSize: 38 }}>🏥</span>}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
+                  Shown centered on a light background while the app is initialising. Logos work best.
+                </div>
+                <input ref={splashRef} type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={e => handleBrandUpload(e.target.files?.[0], 'splash')} />
+                <button className="btn btn-secondary" onClick={() => splashRef.current?.click()}
+                  disabled={brandLoading === 'splash'}>
+                  {brandLoading === 'splash' ? '⏳ Uploading...' : '📤 Upload Splash Image'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Reset Requests */}
+          <div className="card">
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>🔑 Pending Password Resets</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 14 }}>
+              Share the 6-digit code with the user by phone or in person. Codes expire after 2 hours.
+            </div>
+            {(!pendingResets || pendingResets.length === 0) ? (
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0' }}>
+                No pending reset requests.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {pendingResets.map(r => (
+                  <div key={r._id} style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '10px 14px', borderRadius: 'var(--radius-sm)',
+                    background: 'var(--surface-glass)', border: '1px solid var(--border)',
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{r.email}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        Expires {new Date(r.expiresAt).toLocaleTimeString('en-TT', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                    <div style={{
+                      fontFamily: 'monospace', fontSize: 22, fontWeight: 900,
+                      letterSpacing: 6, color: 'var(--blue-600)',
+                      background: '#eff6ff', padding: '6px 14px',
+                      borderRadius: 8, border: '1px solid #bfdbfe',
+                    }}>{r.code}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* CATEGORIES */}
       {tab === 'categories' && (
@@ -631,6 +819,91 @@ export default function AdminPanel() {
           </ModalFooter>
         </form>
       </Modal>
+
+      {/* ISSUES TAB */}
+      {tab === 'issues' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {issueDeleteMsg && <div className="alert alert-success">{issueDeleteMsg}</div>}
+
+          {/* Toolbar */}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input className="form-control" style={{ flex: 1, minWidth: 200 }}
+              placeholder="Search issues by title…"
+              value={issueSearch} onChange={e => setIssueSearch(e.target.value)} />
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+              {(allIssues || []).length} total
+            </div>
+            <button className="btn" onClick={handleDeleteAllIssues}
+              style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+              🗑️ Delete All Issues
+            </button>
+          </div>
+
+          {!allIssues ? (
+            <div className="loading-center"><div className="loading-spinner" /></div>
+          ) : (
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Status</th>
+                    <th>Priority</th>
+                    <th>Created</th>
+                    <th>Notes</th>
+                    <th style={{ width: 60 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(allIssues || [])
+                    .filter(i => !issueSearch || i.title.toLowerCase().includes(issueSearch.toLowerCase()))
+                    .map(issue => (
+                      <tr key={issue._id}>
+                        <td style={{ fontWeight: 600, maxWidth: 260 }}>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {issue.title}
+                          </div>
+                          {issue.address && (
+                            <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>📍 {issue.address}</div>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`badge badge-${issue.status}`} style={{ fontSize: 12 }}>
+                            {issue.status?.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{ fontSize: 12, fontWeight: 600 }}>
+                            {issue.priority === 'urgent' ? '🚨' : issue.priority === 'high' ? '🔴' : issue.priority === 'medium' ? '🟡' : '🟢'}
+                            {' '}{issue.priority}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                          {new Date(issue.createdAt).toLocaleDateString('en-TT', { day: 'numeric', month: 'short', year: '2-digit' })}
+                        </td>
+                        <td style={{ fontSize: 12, color: 'var(--text-muted)'}}>
+                          {(issue.notes || []).length}
+                        </td>
+                        <td>
+                          <button
+                            onClick={() => handleDeleteIssue(issue._id, issue.title)}
+                            style={{
+                              background: 'rgba(239,68,68,0.1)', color: '#ef4444',
+                              border: '1px solid rgba(239,68,68,0.25)', borderRadius: 6,
+                              padding: '4px 10px', cursor: 'pointer', fontSize: 13,
+                            }}
+                            title="Delete issue">
+                            🗑️
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

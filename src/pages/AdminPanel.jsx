@@ -127,6 +127,7 @@ export default function AdminPanel() {
   const updateLeaveType = useMutation(api.leave.updateLeaveType);
   const uploadDistrictsCSV = useMutation(api.districts.uploadDistrictsFromCSV);
   const addDistrict = useMutation(api.districts.addDistrict);
+  const toggleDistrictActive = useMutation(api.districts.toggleDistrictActive);
   const createRole = useMutation(api.roles.createRole);
   const updateRole = useMutation(api.roles.updateRole);
   const seedRoles = useMutation(api.roles.seedDefaultRoles);
@@ -138,24 +139,30 @@ export default function AdminPanel() {
   );
   const [issueSearch, setIssueSearch] = useState('');
   const [issueDeleteMsg, setIssueDeleteMsg] = useState('');
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
-  const handleDeleteIssue = async (issueId, title) => {
-    if (!window.confirm(`Delete issue "${title}"?\nThis cannot be undone.`)) return;
+  const handleDeleteIssue = async (issueId) => {
+    setConfirmDeleteId(issueId);
+  };
+
+  const doDeleteIssue = async (issueId) => {
+    setConfirmDeleteId(null);
     const res = await deleteIssue({ token, issueId });
-    if (!res.success) alert(res.error);
-    else setIssueDeleteMsg('Issue deleted.');
+    if (!res.success) setIssueDeleteMsg(`⚠️ ${res.error}`);
+    else setIssueDeleteMsg('✅ Issue deleted.');
     setTimeout(() => setIssueDeleteMsg(''), 3000);
   };
 
   const handleDeleteAllIssues = async () => {
-    const first = window.confirm('⚠️ Delete ALL issues?\nThis is irreversible.');
-    if (!first) return;
-    const second = window.confirm('Are you absolutely sure? All issue data, notes & subtasks will be permanently removed.');
-    if (!second) return;
+    setDeletingAll(true);
     const res = await deleteAllIssues({ token });
-    if (!res.success) alert(res.error);
-    else setIssueDeleteMsg(`All ${res.count} issues deleted.`);
-    setTimeout(() => setIssueDeleteMsg(''), 4000);
+    setDeletingAll(false);
+    setConfirmDeleteAll(false);
+    if (!res.success) setIssueDeleteMsg(`⚠️ ${res.error}`);
+    else setIssueDeleteMsg(`✅ All ${res.count} issues deleted.`);
+    setTimeout(() => setIssueDeleteMsg(''), 5000);
   };
 
   const updateAppSettings = useMutation(api.settings.updateAppSettings);
@@ -553,23 +560,33 @@ export default function AdminPanel() {
 
           <div className="table-container">
             <table>
-              <thead><tr><th>District Name</th><th>Code / PD</th><th>Corporation</th></tr></thead>
+              <thead><tr><th>District Name</th><th>Code / PD</th><th>Corporation</th><th style={{ textAlign: 'center' }}>Active</th></tr></thead>
               <tbody>
                 {(districts || []).length === 0 ? (
-                  <tr><td colSpan={3}>
+                  <tr><td colSpan={4}>
                     <div className="empty-state" style={{ padding: 24 }}>
                       <div className="empty-state-icon">🗺️</div>
                       <div className="empty-state-title">No districts loaded</div>
                       <div className="empty-state-text">Import from CSV or add manually.</div>
                     </div>
                   </td></tr>
-                ) : (districts || []).map(d => (
-                  <tr key={d._id}>
-                    <td style={{ fontWeight: 600 }}>{d.name || '—'}</td>
-                    <td><span className="tag">{d.code}</span></td>
-                    <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>{d.corporation || '—'}</td>
-                  </tr>
-                ))}
+                ) : (districts || []).map(d => {
+                  const isActive = d.active !== false; // treat missing as true
+                  return (
+                    <tr key={d._id} style={{ opacity: isActive ? 1 : 0.5 }}>
+                      <td style={{ fontWeight: 600 }}>{d.name || '—'}</td>
+                      <td><span className="tag">{d.code}</span></td>
+                      <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>{d.corporation || '—'}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <label className="checkbox-group" title={isActive ? 'Click to deactivate' : 'Click to activate'}
+                          style={{ justifyContent: 'center' }}>
+                          <input type="checkbox" checked={isActive}
+                            onChange={e => toggleDistrictActive({ token, districtId: d._id, active: e.target.checked })} />
+                        </label>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -833,11 +850,56 @@ export default function AdminPanel() {
             <div style={{ fontSize: 13, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
               {(allIssues || []).length} total
             </div>
-            <button className="btn" onClick={handleDeleteAllIssues}
+            <button className="btn" onClick={() => setConfirmDeleteAll(true)}
               style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', fontWeight: 600, whiteSpace: 'nowrap' }}>
               🗑️ Delete All Issues
             </button>
           </div>
+
+          {/* Inline delete-all confirmation */}
+          {confirmDeleteAll && (
+            <div style={{
+              background: 'rgba(239,68,68,0.08)', border: '1.5px solid rgba(239,68,68,0.35)',
+              borderRadius: 'var(--radius)', padding: '14px 18px',
+              display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+            }}>
+              <div style={{ flex: 1, fontSize: 13, color: '#ef4444', fontWeight: 600 }}>
+                ⚠️ This will permanently delete ALL {(allIssues || []).length} issues, including all notes and subtasks. This cannot be undone.
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setConfirmDeleteAll(false)} disabled={deletingAll}>
+                  Cancel
+                </button>
+                <button className="btn btn-sm" onClick={handleDeleteAllIssues} disabled={deletingAll}
+                  style={{ background: '#ef4444', color: 'white', border: 'none', fontWeight: 700 }}>
+                  {deletingAll ? '⏳ Deleting...' : '🗑️ Yes, Delete All'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Inline single-issue delete confirmation */}
+          {confirmDeleteId && (() => {
+            const issue = (allIssues || []).find(i => i._id === confirmDeleteId);
+            return (
+              <div style={{
+                background: 'rgba(239,68,68,0.08)', border: '1.5px solid rgba(239,68,68,0.35)',
+                borderRadius: 'var(--radius)', padding: '14px 18px',
+                display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+              }}>
+                <div style={{ flex: 1, fontSize: 13, color: '#ef4444', fontWeight: 600 }}>
+                  ⚠️ Delete "{issue?.title}"? This cannot be undone.
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setConfirmDeleteId(null)}>Cancel</button>
+                  <button className="btn btn-sm" onClick={() => doDeleteIssue(confirmDeleteId)}
+                    style={{ background: '#ef4444', color: 'white', border: 'none', fontWeight: 700 }}>
+                    🗑️ Delete
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
           {!allIssues ? (
             <div className="loading-center"><div className="loading-spinner" /></div>
@@ -886,7 +948,7 @@ export default function AdminPanel() {
                         </td>
                         <td>
                           <button
-                            onClick={() => handleDeleteIssue(issue._id, issue.title)}
+                            onClick={() => handleDeleteIssue(issue._id)}
                             style={{
                               background: 'rgba(239,68,68,0.1)', color: '#ef4444',
                               border: '1px solid rgba(239,68,68,0.25)', borderRadius: 6,

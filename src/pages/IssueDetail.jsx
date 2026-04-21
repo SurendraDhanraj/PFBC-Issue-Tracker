@@ -67,7 +67,7 @@ export default function IssueDetail() {
 
   const issue = useQuery(api.issues.getIssue, { token, issueId: id });
   const categories = useQuery(api.categories.listCategories);
-  const districts = useQuery(api.districts.listDistricts);
+  const districts = useQuery(api.districts.listDistricts, { activeOnly: true });
   const streets = useQuery(api.districts.listStreets, issue?.districtId ? { districtId: issue.districtId } : 'skip');
   const users = useQuery(api.users.listUsers, { token });
   const roles = useQuery(api.roles.listRoles);
@@ -646,9 +646,9 @@ function NoteItem({ note, token, roleColorMap = {} }) {
     note.storageId ? { storageId: note.storageId } : 'skip'
   );
   const resolvedUrl = fileUrl || note.mediaUrl || null;
-  const isImage = note.mediaType?.startsWith('image/');
-  const isVideo = note.mediaType?.startsWith('video/');
-  const isDoc   = note.mediaType === 'application/pdf' || note.mediaType?.includes('document') || note.mediaType?.includes('word');
+  const isImage = note.mediaType?.startsWith('image/') || note.mediaType === 'image';
+  const isVideo = note.mediaType?.startsWith('video/') || note.mediaType === 'video';
+  const isDoc   = note.mediaType === 'application/pdf' || note.mediaType?.includes('document') || note.mediaType?.includes('word') || note.mediaType === 'document';
 
   const roleColor = note.authorRole ? (roleColorMap[note.authorRole] || null) : null;
   const avatarStyle = roleColor
@@ -677,16 +677,7 @@ function NoteItem({ note, token, roleColorMap = {} }) {
       {note.text && <div className="note-text">{note.text}</div>}
 
       {resolvedUrl && isImage && (
-        <div style={{ marginTop: 10, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', cursor: 'pointer' }}
-          onClick={() => window.open(resolvedUrl, '_blank')}>
-          <img src={resolvedUrl} alt={note.mediaName || 'Attachment'}
-            style={{ width: '100%', maxHeight: 260, objectFit: 'cover', display: 'block' }} />
-          {note.mediaName && (
-            <div style={{ padding: '6px 10px', fontSize: 11, color: 'var(--text-muted)', background: 'var(--surface)' }}>
-              🖼️ {note.mediaName} · Click to open full size
-            </div>
-          )}
-        </div>
+        <ImageThumbnail url={resolvedUrl} name={note.mediaName} />
       )}
       {resolvedUrl && isVideo && (
         <video src={resolvedUrl} controls style={{ width: '100%', borderRadius: 8, marginTop: 10 }} />
@@ -702,5 +693,89 @@ function NoteItem({ note, token, roleColorMap = {} }) {
         </a>
       )}
     </div>
+  );
+}
+
+function ImageThumbnail({ url, name }) {
+  const [lightbox, setLightbox] = useState(false);
+
+  return (
+    <>
+      {/* Thumbnail */}
+      <div style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+        <div
+          onClick={() => setLightbox(true)}
+          title="Click to view full size"
+          style={{
+            width: 80, height: 80, flexShrink: 0,
+            borderRadius: 8, overflow: 'hidden',
+            border: '1.5px solid var(--border)',
+            cursor: 'zoom-in',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+            transition: 'transform 0.15s, box-shadow 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.22)'; }}
+          onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.12)'; }}
+        >
+          <img src={url} alt={name || 'Attachment'}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        </div>
+        {name && (
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', maxWidth: 160, wordBreak: 'break-all', lineHeight: 1.5 }}>
+            🖼️ {name}<br />
+            <span
+              style={{ color: 'var(--blue-600)', cursor: 'pointer', textDecoration: 'underline', fontSize: 10 }}
+              onClick={() => setLightbox(true)}
+            >View full size</span>
+          </div>
+        )}
+      </div>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          onClick={() => setLightbox(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 24, cursor: 'zoom-out',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+            <img
+              src={url}
+              alt={name || 'Attachment'}
+              style={{
+                maxWidth: '90vw', maxHeight: '90vh',
+                objectFit: 'contain', borderRadius: 10,
+                boxShadow: '0 8px 48px rgba(0,0,0,0.6)',
+                display: 'block',
+              }}
+            />
+            <button
+              onClick={() => setLightbox(false)}
+              style={{
+                position: 'absolute', top: -14, right: -14,
+                width: 32, height: 32, borderRadius: '50%',
+                background: 'white', border: 'none', cursor: 'pointer',
+                fontSize: 16, fontWeight: 700, color: '#111',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+              }}
+            >✕</button>
+            {name && (
+              <div style={{ marginTop: 10, textAlign: 'center', color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>
+                {name}
+              </div>
+            )}
+            <a href={url} target="_blank" rel="noopener noreferrer"
+              style={{ display: 'block', marginTop: 6, textAlign: 'center', color: 'rgba(255,255,255,0.5)', fontSize: 11, textDecoration: 'underline' }}
+            >Open original ↗</a>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

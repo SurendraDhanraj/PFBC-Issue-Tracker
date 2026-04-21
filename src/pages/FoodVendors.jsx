@@ -18,7 +18,7 @@ export default function FoodVendors() {
   const [error, setError] = useState('');
 
   const vendors = useQuery(api.food.listVendors, { token, districtId: districtFilter, status: statusFilter || undefined, search: search || undefined });
-  const districts = useQuery(api.districts.listDistricts);
+  const districts = useQuery(api.districts.listDistricts, { activeOnly: true });
   const streets = useQuery(api.districts.listStreets, form.districtId ? { districtId: form.districtId } : 'skip');
   const createVendor = useMutation(api.food.createVendor);
 

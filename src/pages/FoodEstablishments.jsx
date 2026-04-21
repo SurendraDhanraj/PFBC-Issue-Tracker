@@ -20,7 +20,7 @@ export default function FoodEstablishments() {
   const [error, setError] = useState('');
 
   const estabs = useQuery(api.food.listEstablishments, { token, districtId: districtFilter, status: statusFilter || undefined, search: search || undefined });
-  const districts = useQuery(api.districts.listDistricts);
+  const districts = useQuery(api.districts.listDistricts, { activeOnly: true });
   const streets = useQuery(api.districts.listStreets, form.districtId ? { districtId: form.districtId } : 'skip');
   const createEstab = useMutation(api.food.createEstablishment);
 

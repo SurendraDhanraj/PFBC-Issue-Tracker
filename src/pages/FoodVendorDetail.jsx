@@ -12,7 +12,7 @@ export default function FoodVendorDetail() {
   const { canManageFood } = useRoleCheck();
   const navigate = useNavigate();
   const data = useQuery(api.food.getVendor, { token, vendorId: id });
-  const districts = useQuery(api.districts.listDistricts);
+  const districts = useQuery(api.districts.listDistricts, { activeOnly: true });
   const updateVendor = useMutation(api.food.updateVendor);
   const createApp = useMutation(api.food.createVendorApplication);
   const updateApp = useMutation(api.food.updateVendorApplication);

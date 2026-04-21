@@ -45,7 +45,7 @@ export default function NewIssue() {
   const [loading, setLoading] = useState(false);
 
   const categories = useQuery(api.categories.listCategories);
-  const districts = useQuery(api.districts.listDistricts);
+  const districts = useQuery(api.districts.listDistricts, { activeOnly: true });
   const streets = useQuery(api.districts.listStreets, form.districtId ? { districtId: form.districtId } : 'skip');
   const users = useQuery(api.users.listUsers, { token });
 

@@ -72,6 +72,7 @@ export default defineSchema({
     code: v.string(),
     pollingDivision: v.optional(v.string()),
     corporation: v.optional(v.string()),
+    active: v.optional(v.boolean()), // defaults to true when absent
   }).index("by_code", ["code"]),
 
   streets: defineTable({

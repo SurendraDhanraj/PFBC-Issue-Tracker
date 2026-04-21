@@ -17,7 +17,7 @@ export default function StaffProfile() {
   const { isAdmin } = useRoleCheck();
   const navigate = useNavigate();
   const staffUser = useQuery(api.users.getUser, { userId: id, token });
-  const districts = useQuery(api.districts.listDistricts);
+  const districts = useQuery(api.districts.listDistricts, { activeOnly: true });
   const leaveRequests = useQuery(api.leave.listLeaveRequests, { token, userId: id });
   const updateUser = useMutation(api.users.updateUser);
   const deleteUser = useMutation(api.users.deleteUser);

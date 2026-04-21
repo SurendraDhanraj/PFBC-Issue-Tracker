@@ -13,7 +13,7 @@ export default function FoodEstablishmentDetail() {
   const { canManageFood } = useRoleCheck();
   const navigate = useNavigate();
   const data = useQuery(api.food.getEstablishment, { token, estabId: id });
-  const districts = useQuery(api.districts.listDistricts);
+  const districts = useQuery(api.districts.listDistricts, { activeOnly: true });
   const updateEstab = useMutation(api.food.updateEstablishment);
   const createApp = useMutation(api.food.createEstablishmentApplication);
   const updateApp = useMutation(api.food.updateEstablishmentApplication);

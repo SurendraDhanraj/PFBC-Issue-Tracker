@@ -2,40 +2,7 @@ import { action, internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 
-// ─── Static seed data ─────────────────────────────────────────────────────────
-const CATEGORIES = [
-  "kd7f1f3bq6jnhsmynvfsfag7s184mw98",
-  "kd79bah4y7x1bn5sdh8wk8bhpn84ng1p",
-  "kd71eth9xcfdw31j79nr1m1pqx84mf6z",
-  "kd7dybf8ypccprhmen2hc3p00584m14b",
-  "kd78jqsd8yf74sahgmsb2swyjn84n9sf",
-  "kd702rw9d5eqvhq3ptbscpb7w984nrbm",
-  "kd7fq2pd331ttfpnjvrhnf6z0n84nce8",
-  "kd7ak9d5jpp8j0mx07kcmzw74184ndk1",
-  "kd7akk0f02fz6z1j3xxhth3rd584m8t5",
-  "kd74dtyvtc0wr9s840rcrjv07h84n0an",
-];
-
-const DISTRICTS = [
-  "j57fb3rab4jygc9s0zwg1rmhrh84m3nc",
-  "j57ebpj4r1atp6c85ef5tr6yh984njxx",
-  "j573t0qan7y1jv4ykej01382ds84n9n9",
-  "j5713j5nytv35w7yyw5xp6xa8d84ne4h",
-  "j579xsgpwa9r8jjx5cwrcnh2k584nbgq",
-  "j57ewfgs74jmj2mdg7b5d7w80d84nmvh",
-  "j57494wbhknfeypmavgsggxvbd84nfjx",
-  "j57cdhjnpep2hcm554gc91qhqh84mp60",
-];
-
-const USERS: Array<{ id: string; name: string }> = [
-  { id: "k576s4c3x55zdvt1z0j5q13pgs84mmn9", name: "Dr. Surendra Dhanraj" },
-  { id: "k574ep55wwd8rst050bc9swdnh8548za",  name: "Andy Ragoobar" },
-  { id: "k57b3pzdyex58jkcp43dfbdzy9855987",  name: "Ria Pearie-Braithwaite" },
-  { id: "k57bj43nqadf1ka43bd80q87d9854qgs",  name: "Sasha Ramlogan" },
-  { id: "k578zcj26e5yyqvcnp8h8gq34n85486t",  name: "Sherwin Bacchus" },
-  { id: "k57amfzew0t36qz017s5yenwwx8547dn",  name: "Tricia Khan Moonesar" },
-  { id: "k57cbd83ssnxvp0svq5cv1zzv5855r57",  name: "Farrah Roberts" },
-];
+// ─── Static seed data (no hardcoded IDs — fetched live) ───────────────────────
 
 const STATUSES = ["open", "in_progress", "in_progress", "closed", "resolved"] as const;
 const PRIORITIES = ["urgent", "urgent", "high", "high", "medium", "medium", "low"] as const;
@@ -154,6 +121,33 @@ export const _verifyToken = internalQuery({
   },
 });
 
+/** Fetch all category IDs from the live DB */
+export const _fetchCategories = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const cats = await ctx.db.query("categories").collect();
+    return cats.map((c) => c._id);
+  },
+});
+
+/** Fetch all district IDs from the live DB */
+export const _fetchDistricts = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const dists = await ctx.db.query("districts").collect();
+    return dists.map((d) => d._id);
+  },
+});
+
+/** Fetch all user IDs + names from the live DB */
+export const _fetchUsers = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db.query("users").collect();
+    return users.map((u) => ({ id: u._id, name: u.name ?? "Inspector" }));
+  },
+});
+
 export const _deleteAllIssues = internalMutation({
   args: {},
   handler: async (ctx) => {
@@ -165,33 +159,34 @@ export const _deleteAllIssues = internalMutation({
 
 export const _createIssue = internalMutation({
   args: {
-    title:       v.string(),
-    description: v.string(),
-    categoryId:  v.id("categories"),
-    districtId:  v.id("districts"),
-    priority:    v.union(v.literal("low"), v.literal("medium"), v.literal("high"), v.literal("urgent")),
-    status:      v.union(
+    title:        v.string(),
+    description:  v.string(),
+    categoryId:   v.id("categories"),
+    districtId:   v.id("districts"),
+    priority:     v.union(v.literal("low"), v.literal("medium"), v.literal("high"), v.literal("urgent")),
+    status:       v.union(
       v.literal("open"), v.literal("in_progress"), v.literal("pending"),
       v.literal("resolved"), v.literal("closed"), v.literal("critical")
     ),
-    address:     v.string(),
-    reportedBy:  v.id("users"),
-    createdAt:   v.number(),
-    storageId:   v.optional(v.id("_storage")),
-    mediaName:   v.optional(v.string()),
-    docStorageId:v.optional(v.id("_storage")),
-    docName:     v.optional(v.string()),
+    address:      v.string(),
+    reportedBy:   v.id("users"),
+    reporterName: v.optional(v.string()),
+    createdAt:    v.number(),
+    storageId:    v.optional(v.id("_storage")),
+    mediaName:    v.optional(v.string()),
+    docStorageId: v.optional(v.id("_storage")),
+    docName:      v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const note: any = {
       text:       "Issue logged via field inspection.",
       authorId:   args.reportedBy,
-      authorName: USERS.find(u => u.id === args.reportedBy)?.name ?? "Inspector",
+      authorName: args.reporterName ?? "Inspector",
       timestamp:  args.createdAt,
     };
     if (args.storageId) {
       note.storageId = args.storageId;
-      note.mediaType = "image";
+      note.mediaType = "image/jpeg";
       note.mediaName = args.mediaName ?? "photo.jpg";
     }
 
@@ -199,7 +194,7 @@ export const _createIssue = internalMutation({
       ? {
           text:      "Inspection report attached.",
           authorId:  args.reportedBy,
-          authorName:USERS.find(u => u.id === args.reportedBy)?.name ?? "Inspector",
+          authorName: args.reporterName ?? "Inspector",
           timestamp: args.createdAt + 60_000,
           storageId: args.docStorageId,
           mediaType: "document",
@@ -247,7 +242,7 @@ export const _addNote = internalMutation({
     };
     if (args.storageId) {
       note.storageId = args.storageId;
-      note.mediaType = "image";
+      note.mediaType = "image/jpeg";
       note.mediaName = args.mediaName ?? "note_photo.jpg";
     }
     const notes = [...(issue.notes ?? []), note];
@@ -322,10 +317,23 @@ export const seedTestIssues = action({
     const ok: boolean = await ctx.runQuery(internal.seedIssues._verifyToken, { token });
     if (!ok) throw new Error("Unauthorized");
 
+    // 0. Fetch live IDs from this deployment's DB
+    const CATEGORIES: any[] = await ctx.runQuery(internal.seedIssues._fetchCategories, {});
+    const DISTRICTS:  any[] = await ctx.runQuery(internal.seedIssues._fetchDistricts,  {});
+    const USERS: Array<{ id: any; name: string }> =
+      await ctx.runQuery(internal.seedIssues._fetchUsers, {});
+
+    if (!CATEGORIES.length) throw new Error("No categories found — run seedAll first");
+    if (!DISTRICTS.length)  throw new Error("No districts found — run seedDistricts first");
+    if (!USERS.length)      throw new Error("No users found — run seedAll first");
+
     // 1. Wipe existing issues
     const deleted: number = await ctx.runMutation(internal.seedIssues._deleteAllIssues, {});
 
-    const log: string[] = [`🗑️  Deleted ${deleted} existing issues`];
+    const log: string[] = [
+      `🗑️  Deleted ${deleted} existing issues`,
+      `📋 Found ${CATEGORIES.length} categories, ${DISTRICTS.length} districts, ${USERS.length} users`,
+    ];
 
     // 2. Create 40 issues spread over the past year
     for (let i = 0; i < 40; i++) {
@@ -341,19 +349,20 @@ export const seedTestIssues = action({
       const docStorageId = Math.random() > 0.5 ? await uploadPdf(ctx, i) : null;
 
       const issueId: any = await ctx.runMutation(internal.seedIssues._createIssue, {
-        title:       TITLES[i % TITLES.length],
-        description: DESCRIPTIONS[i % DESCRIPTIONS.length],
-        categoryId:  pick(CATEGORIES) as any,
-        districtId:  pick(DISTRICTS)  as any,
+        title:        TITLES[i % TITLES.length],
+        description:  DESCRIPTIONS[i % DESCRIPTIONS.length],
+        categoryId:   pick(CATEGORIES),
+        districtId:   pick(DISTRICTS),
         priority,
         status,
-        address:     pick(ADDRESSES),
-        reportedBy:  user.id as any,
+        address:      pick(ADDRESSES),
+        reportedBy:   user.id,
+        reporterName: user.name,
         createdAt,
-        storageId:   storageId   ?? undefined,
-        mediaName:   `site_photo_${i + 1}.jpg`,
-        docStorageId:docStorageId ?? undefined,
-        docName:     `report_${i + 1}.pdf`,
+        storageId:    storageId    ?? undefined,
+        mediaName:    `site_photo_${i + 1}.jpg`,
+        docStorageId: docStorageId ?? undefined,
+        docName:      `report_${i + 1}.pdf`,
       });
 
       // Add 1-3 follow-up notes (60 % with a photo each)
@@ -364,7 +373,7 @@ export const seedTestIssues = action({
         await ctx.runMutation(internal.seedIssues._addNote, {
           issueId,
           text:       pick(NOTE_TEXTS),
-          authorId:   noteUser.id as any,
+          authorId:   noteUser.id,
           authorName: noteUser.name,
           timestamp:  createdAt + randInt(1, 14) * 86_400_000,
           storageId:  noteImg ?? undefined,

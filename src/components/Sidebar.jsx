@@ -1,6 +1,7 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, usePermissions } from '../context/AuthContext';
 import { useBranding } from '../context/BrandingContext';
+import { useMobileNav } from '../context/MobileNavContext';
 
 const NAV_SECTIONS = [
   {
@@ -37,68 +38,97 @@ export default function Sidebar() {
   const { can } = usePermissions();
   const location = useLocation();
   const { appName, faviconUrl, logoIcon } = useBranding();
+  const { open, setOpen } = useMobileNav();
 
   if (!user) return null;
 
   const initials = user.initials || user.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'PH';
 
+  const handleNavClick = () => setOpen(false);
+
   return (
-    <aside className="sidebar">
-      <div className="sidebar-logo">
-        <div className="sidebar-logo-icon">
-          {faviconUrl
-            ? <img src={faviconUrl} alt="logo" style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: 6 }} />
-            : logoIcon}
-        </div>
-        <div className="sidebar-logo-text">
-          <span className="sidebar-logo-title">{appName}</span>
-          <span className="sidebar-logo-sub">Public Health</span>
-        </div>
-      </div>
+    <>
+      {/* Mobile overlay backdrop */}
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          style={{
+            display: 'none',
+            position: 'fixed', inset: 0,
+            background: 'rgba(15,23,42,0.45)',
+            backdropFilter: 'blur(2px)',
+            zIndex: 110,
+          }}
+          className="sidebar-overlay"
+        />
+      )}
 
-      <nav className="sidebar-nav">
-        {NAV_SECTIONS.map(section => {
-          const visibleItems = section.items.filter(item => can(item.perm, 'view'));
-          if (!visibleItems.length) return null;
-          return (
-            <div key={section.label}>
-              <div className="sidebar-section-label">{section.label}</div>
-              {visibleItems.map(item => {
-                const isActive = item.exact
-                  ? location.pathname === item.path
-                  : location.pathname.startsWith(item.path) && item.path !== '/';
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    className={`nav-item ${isActive ? 'active' : ''}`}
-                  >
-                    <span className="nav-icon">{item.icon}</span>
-                    <span>{item.label}</span>
-                  </NavLink>
-                );
-              })}
-            </div>
-          );
-        })}
-      </nav>
-
-      <div className="sidebar-footer">
-        <div className="user-card">
-          <div className="user-avatar">{initials}</div>
-          <div className="user-info">
-            <div className="user-name">{user.name}</div>
-            <div className="user-role">{user.role}</div>
+      <aside className={`sidebar${open ? ' sidebar-open' : ''}`}>
+        <div className="sidebar-logo">
+          <div className="sidebar-logo-icon">
+            {faviconUrl
+              ? <img src={faviconUrl} alt="logo" style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: 6 }} />
+              : logoIcon}
           </div>
+          <div className="sidebar-logo-text">
+            <span className="sidebar-logo-title">{appName}</span>
+            <span className="sidebar-logo-sub">Public Health</span>
+          </div>
+          {/* Mobile close button */}
+          <button
+            className="sidebar-close-btn"
+            onClick={() => setOpen(false)}
+            aria-label="Close menu"
+          >
+            ✕
+          </button>
         </div>
-        <button
-          className="btn btn-ghost btn-sm"
-          style={{ width: '100%', marginTop: 8, justifyContent: 'center' }}
-          onClick={logout}
-        >
-          🚪 Sign Out
-        </button>
-      </div>
-    </aside>
+
+        <nav className="sidebar-nav">
+          {NAV_SECTIONS.map(section => {
+            const visibleItems = section.items.filter(item => can(item.perm, 'view'));
+            if (!visibleItems.length) return null;
+            return (
+              <div key={section.label}>
+                <div className="sidebar-section-label">{section.label}</div>
+                {visibleItems.map(item => {
+                  const isActive = item.exact
+                    ? location.pathname === item.path
+                    : location.pathname.startsWith(item.path) && item.path !== '/';
+                  return (
+                    <NavLink
+                      key={item.path}
+                      to={item.path}
+                      className={`nav-item ${isActive ? 'active' : ''}`}
+                      onClick={handleNavClick}
+                    >
+                      <span className="nav-icon">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </NavLink>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="user-card">
+            <div className="user-avatar">{initials}</div>
+            <div className="user-info">
+              <div className="user-name">{user.name}</div>
+              <div className="user-role">{user.role}</div>
+            </div>
+          </div>
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ width: '100%', marginTop: 8, justifyContent: 'center' }}
+            onClick={logout}
+          >
+            🚪 Sign Out
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }

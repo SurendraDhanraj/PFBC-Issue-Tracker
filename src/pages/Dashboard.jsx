@@ -113,7 +113,7 @@ export default function Dashboard() {
   const { user, token } = useAuth();
   const [districtFilter, setDistrictFilter] = useState(undefined);
   const [activeFilter, setActiveFilter]     = useState(null); // { type: 'status'|'priority', value }
-  const districts  = useQuery(api.districts.listDistricts);
+  const districts  = useQuery(api.districts.listDistricts, { activeOnly: true });
   const stats      = useQuery(api.issues.getDashboardStats, { token, districtId: districtFilter });
   const categories = useQuery(api.categories.listCategories);
 

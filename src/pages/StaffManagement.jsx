@@ -26,7 +26,7 @@ export default function StaffManagement() {
   const [showResetPw, setShowResetPw] = useState(false);
 
   const users = useQuery(api.users.listUsers, { token });
-  const districts = useQuery(api.districts.listDistricts);
+  const districts = useQuery(api.districts.listDistricts, { activeOnly: true });
   const rolesData = useQuery(api.roles.listRoles);
   const createUser = useMutation(api.users.createUser);
   const updateUser = useMutation(api.users.updateUser);

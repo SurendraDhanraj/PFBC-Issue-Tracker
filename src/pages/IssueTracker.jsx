@@ -42,7 +42,7 @@ export default function IssueTracker() {
     categoryId: catFilter,
   });
   const categories = useQuery(api.categories.listCategories);
-  const districts = useQuery(api.districts.listDistricts);
+  const districts = useQuery(api.districts.listDistricts, { activeOnly: true });
 
   const catMap = Object.fromEntries((categories || []).map(c => [c._id, c]));
   const districtMap = Object.fromEntries((districts || []).map(d => [d._id, d]));

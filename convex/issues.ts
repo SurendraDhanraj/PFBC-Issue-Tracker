@@ -346,9 +346,14 @@ export const deleteAllIssues = mutation({
     if (!user) return { success: false, error: "Unauthorized" };
     if (user.role !== "Medical Officer of Health")
       return { success: false, error: "Only the Medical Officer of Health can delete all issues" };
+    // Collect all issue IDs then delete in this transaction
     const issues = await ctx.db.query("issues").collect();
-    for (const issue of issues) await ctx.db.delete(issue._id);
-    return { success: true, count: issues.length };
+    let count = 0;
+    for (const issue of issues) {
+      await ctx.db.delete(issue._id);
+      count++;
+    }
+    return { success: true, count };
   },
 });
 

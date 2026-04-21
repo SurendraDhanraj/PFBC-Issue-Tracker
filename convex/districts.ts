@@ -2,9 +2,14 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 export const listDistricts = query({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db.query("districts").order("asc").collect();
+  args: { activeOnly: v.optional(v.boolean()) },
+  handler: async (ctx, { activeOnly }) => {
+    const all = await ctx.db.query("districts").order("asc").collect();
+    if (activeOnly) {
+      // treat absent `active` field as true (backwards-compatible)
+      return all.filter((d: any) => d.active !== false);
+    }
+    return all;
   },
 });
 
@@ -15,6 +20,22 @@ export const listStreets = query({
       return await ctx.db.query("streets").withIndex("by_district", q => q.eq("districtId", districtId)).collect();
     }
     return await ctx.db.query("streets").collect();
+  },
+});
+
+export const toggleDistrictActive = mutation({
+  args: {
+    token: v.string(),
+    districtId: v.id("districts"),
+    active: v.boolean(),
+  },
+  handler: async (ctx, { token, districtId, active }) => {
+    const session = await ctx.db.query("sessions").withIndex("by_token", q => q.eq("token", token)).first();
+    if (!session) return { success: false, error: "Unauthorized" };
+    const admin = await ctx.db.get(session.userId);
+    if (!admin || admin.role !== "Medical Officer of Health") return { success: false, error: "Unauthorized" };
+    await ctx.db.patch(districtId, { active });
+    return { success: true };
   },
 });
 
@@ -53,6 +74,7 @@ export const uploadDistrictsFromCSV = mutation({
           code: row.pollingDivision,
           pollingDivision: row.pollingDivision,
           corporation: row.corporation,
+          active: true,
         });
         districtCount++;
       } else {
@@ -94,7 +116,7 @@ export const addDistrict = mutation({
     const existing = await ctx.db.query("districts").withIndex("by_code", q => q.eq("code", code)).first();
     if (existing) return { success: false, error: "District code already exists" };
 
-    const id = await ctx.db.insert("districts", { name, code, corporation });
+    const id = await ctx.db.insert("districts", { name, code, corporation, active: true });
     return { success: true, id };
   },
 });

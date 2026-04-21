@@ -1,5 +1,6 @@
 import { useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useMobileNav } from '../context/MobileNavContext';
 
 const PAGE_TITLES = {
   '/': { title: 'Dashboard', sub: 'Overview and summary' },
@@ -15,6 +16,7 @@ const PAGE_TITLES = {
 export default function Header() {
   const { user } = useAuth();
   const location = useLocation();
+  const { setOpen } = useMobileNav();
 
   if (!user) return null;
 
@@ -32,12 +34,26 @@ export default function Header() {
 
   return (
     <header className="header">
-      <div>
-        <div className="header-title">{pageInfo.title}</div>
-        {pageInfo.sub && <div className="header-subtitle">{pageInfo.sub}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Hamburger — only visible on mobile */}
+        <button
+          className="hamburger-btn"
+          onClick={() => setOpen(o => !o)}
+          aria-label="Open navigation menu"
+        >
+          <span className="hamburger-line" />
+          <span className="hamburger-line" />
+          <span className="hamburger-line" />
+        </button>
+
+        <div>
+          <div className="header-title">{pageInfo.title}</div>
+          {pageInfo.sub && <div className="header-subtitle">{pageInfo.sub}</div>}
+        </div>
       </div>
+
       <div className="header-actions">
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>📅 {dateStr}</span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }} className="header-date">📅 {dateStr}</span>
         {location.pathname !== '/issues/new' && (
           <Link to="/issues/new" className="btn btn-primary btn-sm">
             ＋ New Issue

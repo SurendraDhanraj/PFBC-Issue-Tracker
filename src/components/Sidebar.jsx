@@ -48,17 +48,10 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile overlay backdrop */}
+      {/* Mobile overlay backdrop — only rendered when open */}
       {open && (
         <div
           onClick={() => setOpen(false)}
-          style={{
-            display: 'none',
-            position: 'fixed', inset: 0,
-            background: 'rgba(15,23,42,0.45)',
-            backdropFilter: 'blur(2px)',
-            zIndex: 110,
-          }}
           className="sidebar-overlay"
         />
       )}

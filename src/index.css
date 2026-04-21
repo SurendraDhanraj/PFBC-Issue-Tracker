@@ -641,22 +641,12 @@ tbody tr:hover { background: #f8fafc; }
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
   .detail-grid { grid-template-columns: 1fr; }
 }
-@media (max-width: 900px) {
-  :root { --sidebar-width: 60px; }
-  .sidebar-logo-text, .nav-item span:not(.nav-icon), .user-info, .sidebar-section-label { display: none; }
-  .nav-item { justify-content: center; padding: 10px; }
-  .nav-item.active::before { display: none; }
-  .user-card { justify-content: center; }
-  .grid-3 { grid-template-columns: repeat(2, 1fr); }
-  .hamburger-btn { display: none; }
-  .sidebar-close-btn { display: none; }
-}
 
-/* ── Mobile drawer (≤ 600px) ── */
-@media (max-width: 600px) {
+/* ── Mobile drawer (≤ 900px — covers all phones and small tablets) ── */
+@media (max-width: 900px) {
   :root { --sidebar-width: 0px; --header-height: 56px; }
 
-  /* Sidebar becomes a slide-in drawer */
+  /* Sidebar becomes a slide-in drawer, hidden off-screen by default */
   .sidebar {
     width: 260px;
     transform: translateX(-100%);
@@ -668,7 +658,8 @@ tbody tr:hover { background: #f8fafc; }
     transform: translateX(0);
     pointer-events: auto;
   }
-  /* Restore full sidebar appearance inside the drawer */
+
+  /* Restore full sidebar text inside the drawer */
   .sidebar .sidebar-logo-text,
   .sidebar .nav-item span,
   .sidebar .user-info,
@@ -678,7 +669,7 @@ tbody tr:hover { background: #f8fafc; }
   .sidebar .nav-item.active::before { display: block; }
   .sidebar .user-card { justify-content: flex-start; }
 
-  /* Overlay backdrop */
+  /* Dim overlay behind open drawer */
   .sidebar-overlay {
     position: fixed; inset: 0;
     background: rgba(15,23,42,0.45);
@@ -686,7 +677,7 @@ tbody tr:hover { background: #f8fafc; }
     z-index: 110;
   }
 
-  /* Close button inside sidebar header */
+  /* Close ✕ button inside drawer header */
   .sidebar-close-btn {
     display: flex;
     align-items: center; justify-content: center;
@@ -699,18 +690,19 @@ tbody tr:hover { background: #f8fafc; }
   }
   .sidebar-close-btn:hover { background: var(--border); color: var(--text-primary); }
 
-  /* Content shifts, header spans full width */
-  .main-content { margin-left: 0; padding: 14px; }
+  /* Main content fills full width, header spans full width */
+  .main-content { margin-left: 0; padding: 16px; }
   .header { left: 0; }
 
-  /* Show hamburger button */
+  /* Show hamburger ☰ button */
   .hamburger-btn { display: flex; }
 
-  /* Layout fixes */
+  /* Grid / form layout collapses to single column */
   .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; }
   .form-row, .form-row-3 { grid-template-columns: 1fr; }
   .header-date { display: none; }
 }
+
 
 /* ── Hamburger button (hidden on desktop by default) ── */
 .hamburger-btn {

@@ -704,6 +704,78 @@ tbody tr:hover { background: #f8fafc; }
 }
 
 
+/* ===== BOTTOM NAV (mobile only) ===== */
+.bottom-nav {
+  display: none; /* hidden on desktop */
+}
+
+@media (max-width: 900px) {
+  .bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: calc(60px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: rgba(255,255,255,0.97);
+    backdrop-filter: blur(16px);
+    border-top: 1px solid var(--border);
+    z-index: 200;
+    justify-content: space-around;
+    align-items: stretch;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.08);
+  }
+
+  .bottom-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    gap: 3px;
+    text-decoration: none;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 500;
+    padding: 6px 4px;
+    transition: color 0.15s;
+    border: none;
+    background: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .bottom-nav-item.active {
+    color: var(--blue-600);
+  }
+
+  .bottom-nav-item.active .bottom-nav-icon {
+    background: var(--blue-50);
+    border-radius: 12px;
+  }
+
+  .bottom-nav-icon {
+    font-size: 22px;
+    line-height: 1;
+    padding: 4px 12px;
+    transition: background 0.15s;
+  }
+
+  .bottom-nav-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  /* Push content up so it's not hidden behind bottom nav */
+  .main-content {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+  }
+
+  /* Hide old sidebar on mobile — bottom nav replaces it */
+  .sidebar { display: none !important; }
+  .header { left: 0; }
+  .hamburger-btn { display: none !important; }
+}
+
 /* ── Hamburger button (hidden on desktop by default) ── */
 .hamburger-btn {
   display: none;

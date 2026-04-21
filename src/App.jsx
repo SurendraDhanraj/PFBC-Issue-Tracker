@@ -18,6 +18,7 @@ import LeaveTracker from './pages/LeaveTracker';
 import AdminPanel from './pages/AdminPanel';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
+import BottomNav from './components/BottomNav';
 import { MobileNavProvider } from './context/MobileNavContext';
 
 /** Applies dynamic favicon + page title */
@@ -41,6 +42,7 @@ function AppLayout({ children }) {
         <Sidebar />
         <Header />
         <main className="main-content fade-in">{children}</main>
+        <BottomNav />
       </div>
     </MobileNavProvider>
   );

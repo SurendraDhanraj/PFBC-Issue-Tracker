@@ -118,6 +118,16 @@ export const seedIssues = mutation({
       egypt:     pickDist("4706") as any, newlands:   pickDist("4710") as any,
       hollywood: pickDist("4765") as any, cedros:     pickDist("4790") as any,
     };
+    const distCoords: Record<string, { lat: number; lng: number }> = {
+      [DIST.erin]: { lat: 10.081, lng: -61.621 },
+      [DIST.newVillage]: { lat: 10.171, lng: -61.681 },
+      [DIST.capDeville]: { lat: 10.158, lng: -61.692 },
+      [DIST.techier]: { lat: 10.186, lng: -61.662 },
+      [DIST.egypt]: { lat: 10.176, lng: -61.671 },
+      [DIST.newlands]: { lat: 10.183, lng: -61.677 },
+      [DIST.hollywood]: { lat: 10.178, lng: -61.689 },
+      [DIST.cedros]: { lat: 10.093, lng: -61.838 },
+    };
     // ────────────────────────────────────────────────────────────────────────
 
     const now = Date.now();
@@ -362,6 +372,11 @@ export const seedIssues = mutation({
       const doc: any = { ...rest };
       if (assignedTo !== null && assignedTo !== undefined) doc.assignedTo = assignedTo;
       if (closedAt) doc.closedAt = closedAt;
+      const coords = distCoords[doc.districtId];
+      if (coords) {
+        doc.lat = coords.lat + Math.sin(count) * 0.003;
+        doc.lng = coords.lng + Math.cos(count) * 0.003;
+      }
       await ctx.db.insert("issues", doc);
       count++;
     }
@@ -402,6 +417,16 @@ export const seedIssues2 = mutation({
       capDeville:pickDist("4592") as any, techier:    pickDist("4695") as any,
       egypt:     pickDist("4706") as any, newlands:   pickDist("4710") as any,
       hollywood: pickDist("4765") as any, cedros:     pickDist("4790") as any,
+    };
+    const distCoords: Record<string, { lat: number; lng: number }> = {
+      [DIST.erin]: { lat: 10.081, lng: -61.621 },
+      [DIST.newVillage]: { lat: 10.171, lng: -61.681 },
+      [DIST.capDeville]: { lat: 10.158, lng: -61.692 },
+      [DIST.techier]: { lat: 10.186, lng: -61.662 },
+      [DIST.egypt]: { lat: 10.176, lng: -61.671 },
+      [DIST.newlands]: { lat: 10.183, lng: -61.677 },
+      [DIST.hollywood]: { lat: 10.178, lng: -61.689 },
+      [DIST.cedros]: { lat: 10.093, lng: -61.838 },
     };
     // ────────────────────────────────────────────────────────────────────────
 
@@ -770,6 +795,11 @@ export const seedIssues2 = mutation({
       const { assignedTo, ...rest } = issue;
       const doc: any = { ...rest };
       if (assignedTo) doc.assignedTo = assignedTo;
+      const coords = distCoords[doc.districtId];
+      if (coords) {
+        doc.lat = coords.lat + Math.sin(count + 20) * 0.003;
+        doc.lng = coords.lng + Math.cos(count + 20) * 0.003;
+      }
       await ctx.db.insert("issues", doc);
       count++;
     }

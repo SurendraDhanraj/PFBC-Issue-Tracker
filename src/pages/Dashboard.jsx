@@ -1,9 +1,40 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from 'convex/react';
 import { Link } from 'react-router-dom';
 import { api } from '../../convex/_generated/api';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge, { PriorityBadge } from '../components/StatusBadge';
+import { MapContainer, TileLayer, Marker, Popup, CircleMarker, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
+
+const DISTRICT_CENTERS = {
+  "ERIN": { lat: 10.081, lng: -61.621, name: "Erin", color: "#6b7280" },
+  "NEW VILLAGE": { lat: 10.171, lng: -61.681, name: "New Village", color: "var(--blue-500)" },
+  "CAP-DE-VILLE / FANNY VILLAGE": { lat: 10.158, lng: -61.692, name: "Cap-de-Ville / Fanny Village", color: "var(--cyan-500)" },
+  "TECHIER / GUAPO": { lat: 10.186, lng: -61.662, name: "Techier / Guapo", color: "#8b5cf6" },
+  "EGYPT": { lat: 10.176, lng: -61.671, name: "Egypt", color: "#10b981" },
+  "NEWLANDS / MAHAICA": { lat: 10.183, lng: -61.677, name: "Newlands / Mahaica", color: "#f59e0b" },
+  "HOLLYWOOD": { lat: 10.178, lng: -61.689, name: "Hollywood", color: "#ef4444" },
+  "CEDROS": { lat: 10.093, lng: -61.838, name: "Cedros", color: "#6b7280" }
+};
+
+function MapController({ center, zoom }) {
+  const map = useMap();
+  useEffect(() => {
+    if (center) {
+      map.flyTo(center, zoom, { duration: 1.2 });
+    }
+  }, [center, zoom, map]);
+  return null;
+}
 
 function StatCard({ icon, value, label, color, bg, onClick, active }) {
   return (
@@ -119,6 +150,14 @@ export default function Dashboard() {
 
   const catMap = Object.fromEntries((categories || []).map(c => [c._id, c]));
 
+  const selectedDistrict = districts?.find(d => d._id === districtFilter);
+  const selectedCenter = selectedDistrict && DISTRICT_CENTERS[selectedDistrict.name]
+    ? [DISTRICT_CENTERS[selectedDistrict.name].lat, DISTRICT_CENTERS[selectedDistrict.name].lng]
+    : [10.175, -61.675]; // default to Point Fortin Borough center
+  const selectedZoom = selectedDistrict ? 14 : 13;
+
+  const mapIssues = useQuery(api.issues.listIssues, { token, districtId: districtFilter }) || [];
+
   const [activeBar, setActiveBar] = useState(null);
 
   const handleClearFilter = () => { setActiveFilter(null); setActiveBar(null); };
@@ -139,6 +178,21 @@ export default function Dashboard() {
   };
 
   const visibleRecent = (stats?.recent || []).filter(issue => {
+    if (!activeFilter) return true;
+    if (activeFilter.type === 'status') {
+      if (activeFilter.value === 'created') return issue.status === 'created' || issue.status === 'open';
+      if (activeFilter.value === 'closed')  return issue.status === 'closed'  || issue.status === 'resolved';
+      return issue.status === activeFilter.value;
+    }
+    if (activeFilter.type === 'priority') return issue.priority === activeFilter.value;
+    if (activeFilter.type === 'month') {
+      const cd = new Date(issue.createdAt);
+      return cd.getFullYear() === activeFilter.value.year && cd.getMonth() === activeFilter.value.month;
+    }
+    return true;
+  });
+
+  const visibleMapIssues = mapIssues.filter(issue => {
     if (!activeFilter) return true;
     if (activeFilter.type === 'status') {
       if (activeFilter.value === 'created') return issue.status === 'created' || issue.status === 'open';
@@ -205,6 +259,134 @@ export default function Dashboard() {
         <StatCard icon="🔴" value={stats?.high}   label="High"   color="#ef4444" bg="rgba(239,68,68,0.12)"  onClick={() => handleCardFilter('priority','high')}   active={activeFilter?.type==='priority'&&activeFilter?.value==='high'} />
         <StatCard icon="🟡" value={stats?.medium} label="Medium" color="#f59e0b" bg="rgba(245,158,11,0.12)" onClick={() => handleCardFilter('priority','medium')} active={activeFilter?.type==='priority'&&activeFilter?.value==='medium'} />
         <StatCard icon="🟢" value={stats?.low}    label="Low"    color="#10b981" bg="rgba(16,185,129,0.12)" onClick={() => handleCardFilter('priority','low')}    active={activeFilter?.type==='priority'&&activeFilter?.value==='low'} />
+      </div>
+
+      {/* Issues Minimap */}
+      <div className="card" style={{ marginBottom: 20, padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>🗺️ Public Health Issues Map</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+              Showing {visibleMapIssues.filter(i => i.lat && i.lng).length} issues in {selectedDistrict?.name || 'Point Fortin Borough'}
+            </div>
+          </div>
+          <div style={{ fontSize: 12, display: 'flex', gap: 12 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#dc2626' }} /> Urgent
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#f97316' }} /> High
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#facc15' }} /> Medium
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#22c55e' }} /> Low
+            </span>
+          </div>
+        </div>
+
+        <div style={{ height: 350, width: '100%', position: 'relative', zIndex: 1 }}>
+          <MapContainer
+            center={selectedCenter}
+            zoom={selectedZoom}
+            style={{ height: '100%', width: '100%' }}
+            scrollWheelZoom={true}
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            
+            <MapController center={selectedCenter} zoom={selectedZoom} />
+
+            {/* Municipal District Circles (only when showing all or when specific district matches) */}
+            {Object.entries(DISTRICT_CENTERS).map(([key, d]) => {
+              const isFiltered = districtFilter && selectedDistrict?.name !== key;
+              if (isFiltered) return null;
+              return (
+                <CircleMarker
+                  key={key}
+                  center={[d.lat, d.lng]}
+                  radius={12}
+                  pathOptions={{
+                    color: d.color,
+                    fillColor: d.color,
+                    fillOpacity: 0.15,
+                    weight: 1.5,
+                    dashArray: '4, 4'
+                  }}
+                >
+                  <Popup>
+                    <div style={{ textAlign: 'center', fontWeight: 600 }}>
+                      District: {d.name}
+                    </div>
+                  </Popup>
+                </CircleMarker>
+              );
+            })}
+
+            {/* Issue Markers — colour-coded by priority */}
+            {visibleMapIssues
+              .filter(issue => issue.lat && issue.lng)
+              .map(issue => {
+                const cat = catMap[issue.categoryId];
+                const priorityColors = { urgent: '#dc2626', high: '#f97316', medium: '#facc15', low: '#22c55e' };
+                const color = priorityColors[issue.priority] || '#3b82f6';
+                return (
+                  <CircleMarker
+                    key={issue._id}
+                    center={[issue.lat, issue.lng]}
+                    radius={issue.priority === 'urgent' ? 10 : issue.priority === 'high' ? 8 : 7}
+                    pathOptions={{
+                      color: color,
+                      fillColor: color,
+                      fillOpacity: 0.85,
+                      weight: 2,
+                    }}
+                  >
+                    <Popup>
+                      <div style={{ minWidth: 200, padding: '2px 0' }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6, color: 'var(--text-primary)' }}>
+                          {issue.title}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                          <PriorityBadge priority={issue.priority} />
+                          <StatusBadge status={issue.status} />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 8 }}>
+                          <span>{cat?.icon}</span>
+                          <span>{cat?.name}</span>
+                          <span>·</span>
+                          <span>{timeAgo(issue.createdAt)}</span>
+                        </div>
+                        <Link
+                          to={`/issues/${issue._id}`}
+                          style={{
+                            display: 'block',
+                            textAlign: 'center',
+                            background: 'var(--blue-600)',
+                            color: 'white',
+                            textDecoration: 'none',
+                            padding: '6px 12px',
+                            borderRadius: 'var(--radius-sm)',
+                            fontWeight: 600,
+                            fontSize: 12,
+                            marginTop: 6,
+                            transition: 'background 0.15s'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--blue-700)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'var(--blue-600)'}
+                        >
+                          View Details
+                        </Link>
+                      </div>
+                    </Popup>
+                  </CircleMarker>
+                );
+              })}
+          </MapContainer>
+        </div>
       </div>
 
       {/* Bar Chart — full width */}

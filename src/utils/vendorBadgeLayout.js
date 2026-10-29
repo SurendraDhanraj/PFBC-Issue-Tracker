@@ -27,7 +27,7 @@ const Y = (py) => OY + (py - REF_Y0) * K;
 const L = (px) => px * K; // a length
 
 const BLUE = [189, 215, 238]; // #BDD7EE
-const BORDER = [167, 167, 167]; // #A7A7A7
+const FIELD_BORDER = null; // the reference's grey field outlines are not printed (set to [167, 167, 167] to bring them back)
 const INK = [0, 0, 0];
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -64,12 +64,13 @@ export function drawBadge(doc, { fonts, images, data }) {
   const family = fonts.family;
   const setFont = (bold) => doc.setFont(family, bold ? 'bold' : 'normal');
 
-  const line = (x1, y1, x2, y2, color = BORDER, w = 1) => {
+  const line = (x1, y1, x2, y2, color = INK, w = 1) => {
     doc.setDrawColor(...color);
     doc.setLineWidth(L(w));
     doc.line(X(x1), Y(y1), X(x2), Y(y2));
   };
-  const box = (x1, y1, x2, y2, { fill, stroke = BORDER, w = 1 } = {}) => {
+  const box = (x1, y1, x2, y2, { fill, stroke = FIELD_BORDER, w = 1 } = {}) => {
+    if (!fill && !stroke) return; // an unfilled field with no outline draws nothing
     if (fill) doc.setFillColor(...fill);
     if (stroke) { doc.setDrawColor(...stroke); doc.setLineWidth(L(w)); }
     doc.rect(X(x1), Y(y1), L(x2 - x1), L(y2 - y1), fill && stroke ? 'FD' : fill ? 'F' : 'S');

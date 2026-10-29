@@ -132,7 +132,7 @@ export const listVendors = query({
       vendors = vendors.filter(
         (x: any) =>
           (x.vendorName || "").toLowerCase().includes(s) ||
-          (x.ownerName || "").toLowerCase().includes(s) ||
+          (x.vendorSurname || x.ownerName || "").toLowerCase().includes(s) ||
           (x.registrationNo || "").toLowerCase().includes(s)
       );
     }
@@ -232,12 +232,11 @@ export const createVendor = mutation({
   args: {
     token: v.string(),
     vendorName: v.string(),
-    ownerName: v.string(),
+    vendorSurname: v.string(),
     phone: v.optional(v.string()),
     email: v.optional(v.string()),
     address: v.string(),
     districtId: v.id("districts"),
-    streetId: v.optional(v.id("streets")),
     vendorType: vendorTypeValidator,
     linkedEstablishmentId: v.optional(v.id("foodEstablishments")),
     eventName: v.optional(v.string()),
@@ -250,8 +249,8 @@ export const createVendor = mutation({
     const user = await getWriter(ctx, token);
     if (!user) return { success: false, error: "You do not have permission to register vendors" };
 
-    if (!data.vendorName.trim() || !data.ownerName.trim() || !data.address.trim()) {
-      return { success: false, error: "Vendor name, owner name and address are required" };
+    if (!data.vendorName.trim() || !data.vendorSurname.trim() || !data.address.trim()) {
+      return { success: false, error: "Vendor name, surname and address are required" };
     }
 
     if (data.vendorType === "establishment") {
@@ -280,7 +279,7 @@ export const createVendor = mutation({
     const doc: any = {
       ...data,
       vendorName: data.vendorName.trim(),
-      ownerName: data.ownerName.trim(),
+      vendorSurname: data.vendorSurname.trim(),
       address: data.address.trim(),
       registrationNo,
       registrationDate: now,
@@ -312,7 +311,7 @@ export const updateVendor = mutation({
     token: v.string(),
     vendorId: v.id("foodVendors"),
     vendorName: v.optional(v.string()),
-    ownerName: v.optional(v.string()),
+    vendorSurname: v.optional(v.string()),
     phone: v.optional(v.string()),
     email: v.optional(v.string()),
     address: v.optional(v.string()),

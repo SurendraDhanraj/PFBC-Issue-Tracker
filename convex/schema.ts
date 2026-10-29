@@ -154,7 +154,8 @@ export default defineSchema({
   // Food Vendors (mobile/street)
   foodVendors: defineTable({
     vendorName: v.string(),
-    ownerName: v.string(),
+    vendorSurname: v.optional(v.string()),
+    ownerName: v.optional(v.string()), // legacy: replaced by vendorSurname
     phone: v.optional(v.string()),
     email: v.optional(v.string()),
     address: v.string(),

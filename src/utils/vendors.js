@@ -141,7 +141,7 @@ export function generateVendorBadge({ vendor, licence, districtName }) {
     y += 0.36;
   };
   row('VENDOR NAME', vendor.vendorName);
-  row('OWNER', vendor.ownerName);
+  row('SURNAME', vendor.vendorSurname || vendor.ownerName);
   row('DISTRICT', districtName);
   row('ADDRESS', vendor.address);
   if (vendor.phone) row('PHONE', vendor.phone);

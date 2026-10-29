@@ -88,7 +88,7 @@ export default function FoodVendorDetail() {
   // ---------- dialog openers ----------
   const openEdit = () => {
     setEditForm({
-      vendorName: vendor.vendorName || '', ownerName: vendor.ownerName || '',
+      vendorName: vendor.vendorName || '', vendorSurname: vendor.vendorSurname || vendor.ownerName || '',
       phone: vendor.phone || '', email: vendor.email || '', address: vendor.address || '',
       districtId: vendor.districtId || '', status: vendor.status || 'pending',
       operatingArea: vendor.operatingArea || '', eventName: vendor.eventName || '',
@@ -128,7 +128,7 @@ export default function FoodVendorDetail() {
     const f = editForm;
     run(() => updateVendor({
       token, vendorId: id,
-      vendorName: f.vendorName, ownerName: f.ownerName,
+      vendorName: f.vendorName, vendorSurname: f.vendorSurname,
       phone: f.phone, email: f.email, address: f.address,
       districtId: f.districtId || undefined,
       status: f.status,
@@ -282,7 +282,7 @@ export default function FoodVendorDetail() {
             </div>
             <div className="divider" />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
-              <Field label="Owner">{vendor.ownerName}</Field>
+              <Field label="Surname">{vendor.vendorSurname || vendor.ownerName}</Field>
               <Field label="Phone">{vendor.phone}</Field>
               <Field label="Email">{vendor.email}</Field>
               <Field label="District">{districtName}</Field>
@@ -390,8 +390,8 @@ export default function FoodVendorDetail() {
           <div className="form-row">
             <div className="form-group"><label className="form-label">Vendor name</label>
               <input className="form-control" value={editForm.vendorName || ''} onChange={(e) => setEdit({ vendorName: e.target.value })} required /></div>
-            <div className="form-group"><label className="form-label">Owner name</label>
-              <input className="form-control" value={editForm.ownerName || ''} onChange={(e) => setEdit({ ownerName: e.target.value })} required /></div>
+            <div className="form-group"><label className="form-label">Vendor surname</label>
+              <input className="form-control" value={editForm.vendorSurname || ''} onChange={(e) => setEdit({ vendorSurname: e.target.value })} required /></div>
           </div>
           <div className="form-row">
             <div className="form-group"><label className="form-label">Phone</label>

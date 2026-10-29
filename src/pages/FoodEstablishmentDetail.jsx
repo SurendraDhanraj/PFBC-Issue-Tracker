@@ -218,12 +218,12 @@ export default function FoodEstablishmentDetail() {
             ) : (
               <div className="table-container" style={{ borderRadius: 'var(--radius-sm)' }}>
                 <table>
-                  <thead><tr><th>Vendor</th><th>Owner</th><th>Reg. No.</th><th>Licence</th><th>Status</th><th></th></tr></thead>
+                  <thead><tr><th>Vendor</th><th>Surname</th><th>Reg. No.</th><th>Licence</th><th>Status</th><th></th></tr></thead>
                   <tbody>
                     {linkedVendors.map(v => (
                       <tr key={v._id}>
                         <td style={{ fontWeight: 600 }}>{v.vendorName}</td>
-                        <td>{v.ownerName}</td>
+                        <td>{v.vendorSurname || v.ownerName}</td>
                         <td><span className="tag">{v.registrationNo}</span></td>
                         <td>{v.currentLicenceNo ? <span className="tag">{v.currentLicenceNo}</span> : '—'}</td>
                         <td><StatusBadge status={v.status} /></td>

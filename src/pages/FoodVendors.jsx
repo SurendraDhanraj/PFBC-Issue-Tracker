@@ -10,8 +10,8 @@ import {
 } from '../utils/vendors';
 
 const EMPTY_FORM = {
-  vendorType: '', vendorName: '', ownerName: '', phone: '', email: '',
-  districtId: '', streetId: '', address: '', notes: '',
+  vendorType: '', vendorName: '', vendorSurname: '', phone: '', email: '',
+  districtId: '', address: '', notes: '',
   operatingArea: '', eventName: '', eventStartDate: '', eventEndDate: '', linkedEstablishmentId: '',
 };
 
@@ -59,7 +59,6 @@ export default function FoodVendors() {
 
   const vendors = useQuery(api.vendors.listVendors, { token });
   const districts = useQuery(api.districts.listDistricts, { activeOnly: true });
-  const streets = useQuery(api.districts.listStreets, form.districtId ? { districtId: form.districtId } : 'skip');
   const establishments = useQuery(api.food.listActiveEstablishments, { token });
   const createVendor = useMutation(api.vendors.createVendor);
 
@@ -83,7 +82,7 @@ export default function FoodVendors() {
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
     return (vendors || []).filter((v) => {
-      if (s && !`${v.vendorName} ${v.ownerName} ${v.registrationNo} ${v.currentLicenceNo || ''}`.toLowerCase().includes(s)) return false;
+      if (s && !`${v.vendorName} ${v.vendorSurname || v.ownerName || ''} ${v.registrationNo} ${v.currentLicenceNo || ''}`.toLowerCase().includes(s)) return false;
       if (statusFilter && v.displayStatus !== statusFilter) return false;
       if (typeFilter && v.vendorType !== typeFilter) return false;
       if (districtFilter && v.districtId !== districtFilter) return false;
@@ -103,8 +102,8 @@ export default function FoodVendors() {
   const goReview = (e) => {
     e.preventDefault();
     setError('');
-    if (!form.vendorName.trim() || !form.ownerName.trim() || !form.districtId || !form.address.trim()) {
-      setError('Vendor name, owner, district and address are required.');
+    if (!form.vendorName.trim() || !form.vendorSurname.trim() || !form.districtId || !form.address.trim()) {
+      setError('Vendor name, surname, district and address are required.');
       return;
     }
     if (form.vendorType === 'establishment' && !form.linkedEstablishmentId) {
@@ -131,11 +130,10 @@ export default function FoodVendors() {
         token,
         vendorType: form.vendorType,
         vendorName: form.vendorName,
-        ownerName: form.ownerName,
+        vendorSurname: form.vendorSurname,
         phone: form.phone || undefined,
         email: form.email || undefined,
         districtId: form.districtId,
-        streetId: form.streetId || undefined,
         address: form.address,
         notes: form.notes || undefined,
         operatingArea: form.vendorType === 'itinerant' ? form.operatingArea || undefined : undefined,
@@ -186,7 +184,7 @@ export default function FoodVendors() {
           <span className="search-icon">🔍</span>
           <input
             className="form-control search-input"
-            placeholder="Search name, owner, reg. no. or licence no."
+            placeholder="Search name, surname, reg. no. or licence no."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -237,7 +235,7 @@ export default function FoodVendors() {
                   <td>
                     <div style={{ fontWeight: 600 }}>{v.vendorName || '—'}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {v.ownerName || '—'}
+                      {v.vendorSurname || v.ownerName || '—'}
                       {v.vendorType === 'establishment' && v.linkedEstablishmentName ? ` · ${v.linkedEstablishmentName}` : ''}
                       {v.vendorType === 'special_event' && v.eventName ? ` · ${v.eventName}` : ''}
                     </div>
@@ -309,8 +307,8 @@ export default function FoodVendors() {
                 <input className="form-control" value={form.vendorName} onChange={(e) => set({ vendorName: e.target.value })} required />
               </div>
               <div className="form-group">
-                <label className="form-label">Owner name *</label>
-                <input className="form-control" value={form.ownerName} onChange={(e) => set({ ownerName: e.target.value })} required />
+                <label className="form-label">Vendor surname *</label>
+                <input className="form-control" value={form.vendorSurname} onChange={(e) => set({ vendorSurname: e.target.value })} required />
               </div>
             </div>
             <div className="form-row">
@@ -323,21 +321,12 @@ export default function FoodVendors() {
                 <input className="form-control" type="email" value={form.email} onChange={(e) => set({ email: e.target.value })} />
               </div>
             </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">District *</label>
-                <select className="form-control" value={form.districtId} onChange={(e) => set({ districtId: e.target.value, streetId: '' })} required>
-                  <option value="">Select district</option>
-                  {(districts || []).map((d) => <option key={d._id} value={d._id}>{d.name || d.code}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Street</label>
-                <select className="form-control" value={form.streetId} onChange={(e) => set({ streetId: e.target.value })} disabled={!form.districtId}>
-                  <option value="">Select street</option>
-                  {(streets || []).map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
-                </select>
-              </div>
+            <div className="form-group">
+              <label className="form-label">District *</label>
+              <select className="form-control" value={form.districtId} onChange={(e) => set({ districtId: e.target.value })} required>
+                <option value="">Select district</option>
+                {(districts || []).map((d) => <option key={d._id} value={d._id}>{d.name || d.code}</option>)}
+              </select>
             </div>
             <div className="form-group">
               <label className="form-label">Address *</label>
@@ -404,7 +393,7 @@ export default function FoodVendors() {
               {[
                 ['Type', <span className={`vendor-type-badge vendor-type-${form.vendorType}`}>{TYPE_LABELS[form.vendorType]}</span>],
                 ['Vendor', form.vendorName],
-                ['Owner', form.ownerName],
+                ['Surname', form.vendorSurname],
                 ['Phone / email', [form.phone, form.email].filter(Boolean).join(' · ') || '—'],
                 ['District', districtMap[form.districtId]?.name || '—'],
                 ['Address', form.address],

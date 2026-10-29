@@ -140,7 +140,7 @@ export function generateVendorBadge({ vendor, licence, districtName }) {
     doc.line(0.6, y + 0.06, 4.9, y + 0.06);
     y += 0.36;
   };
-  row('VENDOR NAME', vendor.vendorName);
+  row('FIRST NAME', vendor.vendorName);
   row('SURNAME', vendor.vendorSurname || vendor.ownerName);
   row('DISTRICT', districtName);
   row('ADDRESS', vendor.address);

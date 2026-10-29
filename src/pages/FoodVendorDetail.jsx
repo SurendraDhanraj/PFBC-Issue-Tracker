@@ -272,7 +272,7 @@ export default function FoodVendorDetail() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
               <div style={{ fontSize: 40 }}>🛒</div>
               <div>
-                <div style={{ fontSize: 20, fontWeight: 800 }}>{vendor.vendorName}</div>
+                <div style={{ fontSize: 20, fontWeight: 800 }}>{[vendor.vendorName, vendor.vendorSurname || vendor.ownerName].filter(Boolean).join(' ')}</div>
                 <div style={{ color: 'var(--text-muted)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span className="tag">{vendor.registrationNo}</span>
                   <span className={`vendor-type-badge vendor-type-${vendor.vendorType}`}>{TYPE_LABELS[vendor.vendorType]}</span>
@@ -282,6 +282,7 @@ export default function FoodVendorDetail() {
             </div>
             <div className="divider" />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
+              <Field label="First name">{vendor.vendorName}</Field>
               <Field label="Surname">{vendor.vendorSurname || vendor.ownerName}</Field>
               <Field label="Phone">{vendor.phone}</Field>
               <Field label="Email">{vendor.email}</Field>
@@ -388,7 +389,7 @@ export default function FoodVendorDetail() {
         <form onSubmit={submitEdit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {error && <div className="alert alert-error">⚠️ {error}</div>}
           <div className="form-row">
-            <div className="form-group"><label className="form-label">Vendor name</label>
+            <div className="form-group"><label className="form-label">First name</label>
               <input className="form-control" value={editForm.vendorName || ''} onChange={(e) => setEdit({ vendorName: e.target.value })} required /></div>
             <div className="form-group"><label className="form-label">Vendor surname</label>
               <input className="form-control" value={editForm.vendorSurname || ''} onChange={(e) => setEdit({ vendorSurname: e.target.value })} required /></div>

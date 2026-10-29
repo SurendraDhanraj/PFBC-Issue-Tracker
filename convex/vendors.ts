@@ -250,7 +250,7 @@ export const createVendor = mutation({
     if (!user) return { success: false, error: "You do not have permission to register vendors" };
 
     if (!data.vendorName.trim() || !data.vendorSurname.trim() || !data.address.trim()) {
-      return { success: false, error: "Vendor name, surname and address are required" };
+      return { success: false, error: "First name, surname and address are required" };
     }
 
     if (data.vendorType === "establishment") {

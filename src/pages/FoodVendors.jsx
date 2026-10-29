@@ -103,7 +103,7 @@ export default function FoodVendors() {
     e.preventDefault();
     setError('');
     if (!form.vendorName.trim() || !form.vendorSurname.trim() || !form.districtId || !form.address.trim()) {
-      setError('Vendor name, surname, district and address are required.');
+      setError('First name, surname, district and address are required.');
       return;
     }
     if (form.vendorType === 'establishment' && !form.linkedEstablishmentId) {
@@ -233,11 +233,9 @@ export default function FoodVendors() {
               {filtered.map((v) => (
                 <tr key={v._id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/food/vendors/${v._id}`)}>
                   <td>
-                    <div style={{ fontWeight: 600 }}>{v.vendorName || '—'}</div>
+                    <div style={{ fontWeight: 600 }}>{[v.vendorName, v.vendorSurname || v.ownerName].filter(Boolean).join(' ') || '—'}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {v.vendorSurname || v.ownerName || '—'}
-                      {v.vendorType === 'establishment' && v.linkedEstablishmentName ? ` · ${v.linkedEstablishmentName}` : ''}
-                      {v.vendorType === 'special_event' && v.eventName ? ` · ${v.eventName}` : ''}
+                      {v.vendorType === 'itinerant' ? v.operatingArea : v.vendorType === 'establishment' ? v.linkedEstablishmentName : v.eventName}
                     </div>
                   </td>
                   <td><span className="tag">{v.registrationNo || '—'}</span></td>
@@ -303,7 +301,7 @@ export default function FoodVendors() {
           <form onSubmit={goReview} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div className="form-row">
               <div className="form-group">
-                <label className="form-label">Vendor / business name *</label>
+                <label className="form-label">First name *</label>
                 <input className="form-control" value={form.vendorName} onChange={(e) => set({ vendorName: e.target.value })} required />
               </div>
               <div className="form-group">
@@ -392,7 +390,7 @@ export default function FoodVendors() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               {[
                 ['Type', <span className={`vendor-type-badge vendor-type-${form.vendorType}`}>{TYPE_LABELS[form.vendorType]}</span>],
-                ['Vendor', form.vendorName],
+                ['First name', form.vendorName],
                 ['Surname', form.vendorSurname],
                 ['Phone / email', [form.phone, form.email].filter(Boolean).join(' · ') || '—'],
                 ['District', districtMap[form.districtId]?.name || '—'],

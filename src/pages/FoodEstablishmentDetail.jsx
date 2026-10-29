@@ -218,7 +218,7 @@ export default function FoodEstablishmentDetail() {
             ) : (
               <div className="table-container" style={{ borderRadius: 'var(--radius-sm)' }}>
                 <table>
-                  <thead><tr><th>Vendor</th><th>Surname</th><th>Reg. No.</th><th>Licence</th><th>Status</th><th></th></tr></thead>
+                  <thead><tr><th>First name</th><th>Surname</th><th>Reg. No.</th><th>Licence</th><th>Status</th><th></th></tr></thead>
                   <tbody>
                     {linkedVendors.map(v => (
                       <tr key={v._id}>

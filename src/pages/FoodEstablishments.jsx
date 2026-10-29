@@ -1,120 +1,206 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation } from 'convex/react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../convex/_generated/api';
 import { useAuth, useRoleCheck } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
 import Modal, { ModalFooter } from '../components/Modal';
+import { ESTABLISHMENT_TYPES, LICENCE_STATE, fmtDay, daysLeftText } from '../utils/vendors';
 
-const EST_TYPES = ['Restaurant', 'Bakery', 'Bar/Club', 'Cafeteria', 'Supermarket', 'Rum Shop', 'Snackette', 'Chinese Restaurant', 'Fast Food', 'Catering Service', 'Other'];
+const EMPTY_FORM = {
+  establishmentName: '', establishmentType: '', ownerName: '', phone: '', email: '',
+  districtId: '', address: '', seatingCapacity: '', notes: '',
+};
 
-function LicenceDot({ expiry }) {
-  if (!expiry) return <span className="licence-dot licence-none">None</span>;
-  const daysLeft = Math.ceil((expiry - Date.now()) / 86400000);
-  if (daysLeft < 0) return <span className="licence-dot licence-expired">Expired</span>;
-  if (daysLeft <= 30) return <span className="licence-dot licence-expiring">{daysLeft}d left</span>;
-  return <span className="licence-dot licence-active">Active</span>;
+const LICENCE_TABS = [
+  { key: '', label: 'All' },
+  { key: 'expiring', label: 'Expiring (30 days)' },
+  { key: 'expired', label: 'Expired' },
+  { key: 'none', label: 'No licence' },
+  { key: 'open_application', label: 'Open applications' },
+];
+
+function LicenceChip({ state, daysLeft }) {
+  const s = LICENCE_STATE[state] || LICENCE_STATE.none;
+  const text = state === 'expiring' ? `${daysLeft}d left` : s.text;
+  return <span className={`licence-dot ${s.cls}`}>{text}</span>;
 }
-
-const EMPTY_FORM = { establishmentName: '', ownerName: '', phone: '', email: '', address: '', districtId: '', streetId: '', registrationNo: '', establishmentType: '', seatingCapacity: '', notes: '' };
 
 export default function FoodEstablishments() {
   const { token } = useAuth();
   const { canManageFood } = useRoleCheck();
+  const navigate = useNavigate();
+
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [districtFilter, setDistrictFilter] = useState(undefined);
+  const [typeFilter, setTypeFilter] = useState('');
+  const [districtFilter, setDistrictFilter] = useState('');
+  const [licenceFilter, setLicenceFilter] = useState('');
+
   const [showAdd, setShowAdd] = useState(false);
-  const [wizardStep, setWizardStep] = useState(1);
   const [form, setForm] = useState(EMPTY_FORM);
-  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const estabs = useQuery(api.food.listEstablishments, { token, districtId: districtFilter, status: statusFilter || undefined, search: search || undefined });
+  const establishments = useQuery(api.establishments.listEstablishments, { token });
   const districts = useQuery(api.districts.listDistricts, { activeOnly: true });
-  const streets = useQuery(api.districts.listStreets, form.districtId ? { districtId: form.districtId } : 'skip');
-  const createEstab = useMutation(api.food.createEstablishment);
+  const createEstablishment = useMutation(api.establishments.createEstablishment);
 
-  const districtMap = Object.fromEntries((districts || []).map(d => [d._id, d]));
+  const districtMap = useMemo(
+    () => Object.fromEntries((districts || []).map((d) => [d._id, d])),
+    [districts]
+  );
 
-  const resetWizard = () => { setShowAdd(false); setWizardStep(1); setForm(EMPTY_FORM); setError(''); };
+  const counts = useMemo(() => {
+    const c = { '': 0, expiring: 0, expired: 0, none: 0, open_application: 0 };
+    (establishments || []).forEach((e) => {
+      c['']++;
+      if (e.licenceState === 'expiring') c.expiring++;
+      if (e.licenceState === 'expired') c.expired++;
+      if (e.licenceState === 'none') c.none++;
+      if (e.hasOpenApplication) c.open_application++;
+    });
+    return c;
+  }, [establishments]);
 
-  const handleCreate = async (e) => {
+  const filtered = useMemo(() => {
+    const s = search.trim().toLowerCase();
+    return (establishments || []).filter((e) => {
+      if (s && !`${e.establishmentName} ${e.ownerName || ''} ${e.registrationNo} ${e.currentLicenceNo || ''}`.toLowerCase().includes(s)) return false;
+      if (statusFilter && e.displayStatus !== statusFilter) return false;
+      if (typeFilter && e.establishmentType !== typeFilter) return false;
+      if (districtFilter && e.districtId !== districtFilter) return false;
+      if (licenceFilter === 'open_application') return e.hasOpenApplication;
+      if (licenceFilter && e.licenceState !== licenceFilter) return false;
+      return true;
+    });
+  }, [establishments, search, statusFilter, typeFilter, districtFilter, licenceFilter]);
+
+  const set = (patch) => setForm((f) => ({ ...f, ...patch }));
+  const closeForm = () => { setShowAdd(false); setForm(EMPTY_FORM); setError(''); };
+
+  const submit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!form.establishmentName || !form.ownerName || !form.registrationNo || !form.establishmentType || !form.districtId || !form.address) {
-      setError('Please fill all required fields.'); return;
-    }
-    setLoading(true);
+    setSaving(true);
     try {
-      const res = await createEstab({
-        token, establishmentName: form.establishmentName, ownerName: form.ownerName,
-        phone: form.phone || undefined, email: form.email || undefined,
-        address: form.address, districtId: form.districtId,
-        streetId: form.streetId || undefined, registrationNo: form.registrationNo,
+      const res = await createEstablishment({
+        token,
+        establishmentName: form.establishmentName,
         establishmentType: form.establishmentType,
-        seatingCapacity: form.seatingCapacity ? Number(form.seatingCapacity) : undefined,
+        ownerName: form.ownerName,
+        phone: form.phone || undefined,
+        email: form.email || undefined,
+        districtId: form.districtId,
+        address: form.address,
+        seatingCapacity: form.seatingCapacity !== '' ? Number(form.seatingCapacity) : undefined,
         notes: form.notes || undefined,
       });
-      if (res.success) resetWizard();
-      else setError(res.error || 'Registration failed');
-    } finally { setLoading(false); }
+      if (res.success) {
+        closeForm();
+        navigate(`/food/establishments/${res.id}`);
+      } else {
+        setError(res.error || 'Registration failed.');
+      }
+    } catch (err) {
+      setError(err?.message || 'Registration failed.');
+    } finally {
+      setSaving(false);
+    }
   };
-
-  const wizardTitles = { 1: 'Register Establishment — Details', 2: 'Register Establishment — Review' };
 
   return (
     <div className="slide-up">
       <div className="page-header">
         <div>
           <div className="page-title">🏪 Food Establishments</div>
-          <div className="page-subtitle">Fixed premises registration registry</div>
+          <div className="page-subtitle">Registration, annual licences and the vendors who work in each establishment</div>
         </div>
-        {canManageFood && <button className="btn btn-primary" onClick={() => setShowAdd(true)}>＋ Register Establishment</button>}
+        {canManageFood && (
+          <button className="btn btn-primary" onClick={() => setShowAdd(true)}>＋ Register Establishment</button>
+        )}
+      </div>
+
+      <div className="vendor-type-tabs" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+        {LICENCE_TABS.map((t) => (
+          <button key={t.key} className={licenceFilter === t.key ? 'active' : ''} onClick={() => setLicenceFilter(t.key)}>
+            {t.label} ({counts[t.key]})
+          </button>
+        ))}
       </div>
 
       <div className="filters-bar">
         <div className="search-input-wrap">
           <span className="search-icon">🔍</span>
-          <input className="form-control search-input" placeholder="Search establishments..." value={search} onChange={e => setSearch(e.target.value)} />
+          <input
+            className="form-control search-input"
+            placeholder="Search name, owner, reg. no. or licence no."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
-        <select className="form-control" style={{ width: 'auto', minWidth: 130 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-          <option value="">All Statuses</option>
-          <option value="active">Active</option><option value="pending">Pending</option>
-          <option value="expired">Expired</option><option value="suspended">Suspended</option><option value="revoked">Revoked</option>
+        <select className="form-control" style={{ width: 'auto', minWidth: 160 }} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+          <option value="">All types</option>
+          {ESTABLISHMENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
-        <select className="form-control" style={{ width: 'auto', minWidth: 160 }} value={districtFilter || ''} onChange={e => setDistrictFilter(e.target.value || undefined)}>
-          <option value="">All Districts</option>
-          {(districts || []).map(d => <option key={d._id} value={d._id}>{d.name || d.code}</option>)}
+        <select className="form-control" style={{ width: 'auto', minWidth: 130 }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <option value="">All statuses</option>
+          {['active', 'pending', 'expired', 'suspended', 'revoked'].map((s) => (
+            <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>
+          ))}
+        </select>
+        <select className="form-control" style={{ width: 'auto', minWidth: 150 }} value={districtFilter} onChange={(e) => setDistrictFilter(e.target.value)}>
+          <option value="">All districts</option>
+          {(districts || []).map((d) => <option key={d._id} value={d._id}>{d.name || d.code}</option>)}
         </select>
       </div>
 
-      {!estabs ? (
+      {!establishments ? (
         <div className="loading-center"><div className="loading-spinner" /></div>
-      ) : estabs.length === 0 ? (
-        <div className="card"><div className="empty-state">
-          <div className="empty-state-icon">🏪</div>
-          <div className="empty-state-title">No establishments found</div>
-        </div></div>
+      ) : filtered.length === 0 ? (
+        <div className="card">
+          <div className="empty-state">
+            <div className="empty-state-icon">🏪</div>
+            <div className="empty-state-title">{establishments.length === 0 ? 'No establishments registered yet' : 'No establishments match these filters'}</div>
+          </div>
+        </div>
       ) : (
         <div className="table-container">
           <table>
-            <thead><tr><th>Establishment</th><th>Owner</th><th>Type</th><th>District</th><th>Reg. No.</th><th>Vendors</th><th>Licence</th><th>Status</th><th></th></tr></thead>
+            <thead>
+              <tr>
+                <th>Establishment</th>
+                <th>Reg. No.</th>
+                <th>Type</th>
+                <th>District</th>
+                <th>Vendors</th>
+                <th>Licence</th>
+                <th>Expires</th>
+                <th>Status</th>
+                <th />
+              </tr>
+            </thead>
             <tbody>
-              {estabs.map(e => (
-                <tr key={e._id} onClick={() => window.location.href = `/food/establishments/${e._id}`}>
+              {filtered.map((e) => (
+                <tr key={e._id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/food/establishments/${e._id}`)}>
                   <td>
-                    <div style={{ fontWeight: 600 }}>{e.establishmentName}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>📍 {e.address}</div>
+                    <div style={{ fontWeight: 600 }}>{e.establishmentName || '—'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{e.ownerName || '—'}</div>
                   </td>
-                  <td>{e.ownerName}</td>
-                  <td><span className="tag">{e.establishmentType}</span></td>
-                  <td style={{ fontSize: 13 }}>{districtMap[e.districtId]?.name || '—'}</td>
-                  <td><span className="tag">{e.registrationNo}</span></td>
-                  <td style={{ fontSize: 13 }}>👥 {e.linkedVendorCount || 0}</td>
-                  <td><LicenceDot expiry={e.licenceExpiry} /></td>
-                  <td><StatusBadge status={e.status} /></td>
-                  <td><Link to={`/food/establishments/${e._id}`} className="btn btn-secondary btn-sm" onClick={ev => ev.stopPropagation()}>View →</Link></td>
+                  <td><span className="tag">{e.registrationNo || '—'}</span></td>
+                  <td style={{ fontSize: 13 }}>{e.establishmentType || '—'}</td>
+                  <td style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{districtMap[e.districtId]?.name || '—'}</td>
+                  <td style={{ fontSize: 13 }}>{e.vendorCount}</td>
+                  <td>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{e.currentLicenceNo || '—'}</div>
+                    <LicenceChip state={e.licenceState} daysLeft={e.daysLeft} />
+                    {e.hasOpenApplication && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>application open</div>}
+                  </td>
+                  <td style={{ fontSize: 13 }} title={daysLeftText(e.licenceState, e.daysLeft)}>{fmtDay(e.licenceExpiry)}</td>
+                  <td><StatusBadge status={e.displayStatus} /></td>
+                  <td>
+                    <Link to={`/food/establishments/${e._id}`} className="btn btn-secondary btn-sm" onClick={(ev) => ev.stopPropagation()}>View →</Link>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -122,86 +208,65 @@ export default function FoodEstablishments() {
         </div>
       )}
 
-      {/* Registration Wizard */}
-      <Modal isOpen={showAdd} onClose={resetWizard} title={wizardTitles[wizardStep]} size="lg">
-        <div className="wizard-steps">
-          {[{ n: 1, label: 'Details' }, { n: 2, label: 'Review' }].map(s => (
-            <span key={s.n} className={`wizard-step ${wizardStep === s.n ? 'active' : ''} ${wizardStep > s.n ? 'completed' : ''}`}>
-              <span className="wizard-step-num">{wizardStep > s.n ? '✓' : s.n}</span> {s.label}
-            </span>
-          ))}
-        </div>
-
-        {error && <div className="alert alert-error" style={{ marginBottom: 14 }}>⚠️ {error}</div>}
-
-        {wizardStep === 1 && (
-          <form onSubmit={e => { e.preventDefault(); if (!form.establishmentName || !form.ownerName || !form.registrationNo || !form.establishmentType || !form.districtId || !form.address) { setError('Please fill all required fields.'); return; } setError(''); setWizardStep(2); }} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div className="form-row">
-              <div className="form-group"><label className="form-label">Establishment Name *</label><input className="form-control" value={form.establishmentName} onChange={e => setForm(f => ({ ...f, establishmentName: e.target.value }))} required /></div>
-              <div className="form-group"><label className="form-label">Owner Name *</label><input className="form-control" value={form.ownerName} onChange={e => setForm(f => ({ ...f, ownerName: e.target.value }))} required /></div>
+      <Modal isOpen={showAdd} onClose={closeForm} title="Register Food Establishment" size="lg">
+        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {error && <div className="alert alert-error">⚠️ {error}</div>}
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Establishment name *</label>
+              <input className="form-control" value={form.establishmentName} onChange={(e) => set({ establishmentName: e.target.value })} required />
             </div>
-            <div className="form-row">
-              <div className="form-group"><label className="form-label">Registration No. *</label><input className="form-control" value={form.registrationNo} onChange={e => setForm(f => ({ ...f, registrationNo: e.target.value }))} required /></div>
-              <div className="form-group">
-                <label className="form-label">Type *</label>
-                <select className="form-control" value={form.establishmentType} onChange={e => setForm(f => ({ ...f, establishmentType: e.target.value }))} required>
-                  <option value="">Select type</option>
-                  {EST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
+            <div className="form-group">
+              <label className="form-label">Type *</label>
+              <select className="form-control" value={form.establishmentType} onChange={(e) => set({ establishmentType: e.target.value })} required>
+                <option value="">Select type</option>
+                {ESTABLISHMENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
             </div>
-            <div className="form-row">
-              <div className="form-group"><label className="form-label">Phone</label><input className="form-control" type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
-              <div className="form-group"><label className="form-label">Email</label><input className="form-control" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Owner name *</label>
+              <input className="form-control" value={form.ownerName} onChange={(e) => set({ ownerName: e.target.value })} required />
             </div>
-            <div className="form-row">
-              <div className="form-group"><label className="form-label">Seating Capacity</label><input className="form-control" type="number" value={form.seatingCapacity} onChange={e => setForm(f => ({ ...f, seatingCapacity: e.target.value }))} placeholder="Optional" /></div>
-              <div className="form-group">
-                <label className="form-label">District *</label>
-                <select className="form-control" value={form.districtId} onChange={e => setForm(f => ({ ...f, districtId: e.target.value, streetId: '' }))} required>
-                  <option value="">Select district</option>
-                  {(districts || []).map(d => <option key={d._id} value={d._id}>{d.name || d.code}</option>)}
-                </select>
-              </div>
+            <div className="form-group">
+              <label className="form-label">Seating capacity</label>
+              <input className="form-control" type="number" min="0" value={form.seatingCapacity} onChange={(e) => set({ seatingCapacity: e.target.value })} />
             </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Street</label>
-                <select className="form-control" value={form.streetId} onChange={e => setForm(f => ({ ...f, streetId: e.target.value }))} disabled={!form.districtId}>
-                  <option value="">Select street</option>
-                  {(streets || []).map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
-                </select>
-              </div>
-              <div className="form-group"><label className="form-label">Address *</label><input className="form-control" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} required /></div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Phone</label>
+              <input className="form-control" type="tel" value={form.phone} onChange={(e) => set({ phone: e.target.value })} />
             </div>
-            <div className="form-group"><label className="form-label">Notes</label><textarea className="form-control" rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} /></div>
-            <ModalFooter>
-              <button type="button" className="btn btn-secondary" onClick={resetWizard}>Cancel</button>
-              <button type="submit" className="btn btn-primary">Next →</button>
-            </ModalFooter>
-          </form>
-        )}
-
-        {wizardStep === 2 && (
-          <>
-            <div className="review-summary">
-              <div><div className="detail-label">Establishment Name</div><div className="detail-value">{form.establishmentName}</div></div>
-              <div><div className="detail-label">Owner</div><div className="detail-value">{form.ownerName}</div></div>
-              <div><div className="detail-label">Registration No.</div><div className="detail-value">{form.registrationNo}</div></div>
-              <div><div className="detail-label">Type</div><div className="detail-value"><span className="tag">{form.establishmentType}</span></div></div>
-              <div><div className="detail-label">Phone</div><div className="detail-value">{form.phone || '—'}</div></div>
-              <div><div className="detail-label">Email</div><div className="detail-value">{form.email || '—'}</div></div>
-              <div><div className="detail-label">Seating Capacity</div><div className="detail-value">{form.seatingCapacity || '—'}</div></div>
-              <div><div className="detail-label">District</div><div className="detail-value">{districtMap[form.districtId]?.name || '—'}</div></div>
-              <div style={{ gridColumn: '1 / -1' }}><div className="detail-label">Address</div><div className="detail-value">{form.address}</div></div>
-              {form.notes && <div style={{ gridColumn: '1 / -1' }}><div className="detail-label">Notes</div><div className="detail-value">{form.notes}</div></div>}
+            <div className="form-group">
+              <label className="form-label">Email</label>
+              <input className="form-control" type="email" value={form.email} onChange={(e) => set({ email: e.target.value })} />
             </div>
-            <ModalFooter>
-              <button type="button" className="btn btn-secondary" onClick={() => setWizardStep(1)}>← Back</button>
-              <button type="button" className="btn btn-primary" disabled={loading} onClick={handleCreate}>{loading ? 'Registering...' : '✅ Register Establishment'}</button>
-            </ModalFooter>
-          </>
-        )}
+          </div>
+          <div className="form-group">
+            <label className="form-label">District *</label>
+            <select className="form-control" value={form.districtId} onChange={(e) => set({ districtId: e.target.value })} required>
+              <option value="">Select district</option>
+              {(districts || []).map((d) => <option key={d._id} value={d._id}>{d.name || d.code}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Address *</label>
+            <input className="form-control" value={form.address} onChange={(e) => set({ address: e.target.value })} required />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Notes</label>
+            <textarea className="form-control" rows={2} value={form.notes} onChange={(e) => set({ notes: e.target.value })} />
+          </div>
+          <div className="alert alert-info">
+            A registration number (FE-{new Date().getFullYear()}-NNNN) is generated when you register, and the first licence application is opened. Record the inspection and payment from the establishment's page. Vendors who work here are assigned from there too.
+          </div>
+          <ModalFooter>
+            <button type="button" className="btn btn-secondary" onClick={closeForm}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Registering…' : '✅ Register Establishment'}</button>
+          </ModalFooter>
+        </form>
       </Modal>
     </div>
   );

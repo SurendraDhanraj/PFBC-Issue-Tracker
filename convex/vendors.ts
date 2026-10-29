@@ -16,15 +16,12 @@ import { v } from "convex/values";
 //  - Every application/renewal is kept as history against the vendor
 // ============================================================
 
-const DAY = 86_400_000;
-const RENEWAL_WINDOW_DAYS = 30;
+import {
+  DAY, RENEWAL_WINDOW_DAYS, getSessionUser, getWriterFor, licenceInfo, displayStatus,
+  annualValidity, nextRegistrationNo as nextRegNo,
+} from "./licenceCommon";
+
 const VENDOR_STATUSES = ["active", "pending", "suspended", "expired", "revoked"];
-const WRITE_FALLBACK_ROLES = [
-  "Medical Officer of Health",
-  "Public Health Inspector III",
-  "Public Health Inspector II",
-  "Sanitation Foreman III",
-];
 
 const vendorTypeValidator = v.union(
   v.literal("itinerant"),
@@ -34,55 +31,8 @@ const vendorTypeValidator = v.union(
 
 // ---------- helpers ----------
 
-async function getSessionUser(ctx: any, token: string) {
-  const session = await ctx.db
-    .query("sessions")
-    .withIndex("by_token", (q: any) => q.eq("token", token))
-    .first();
-  if (!session || session.expiresAt < Date.now()) return null;
-  return await ctx.db.get(session.userId);
-}
-
-/** Write access to the food vendor module (role permissions, with a sensible fallback). */
-async function getWriter(ctx: any, token: string) {
-  const user = await getSessionUser(ctx, token);
-  if (!user) return null;
-  const roleDoc = await ctx.db
-    .query("roles")
-    .withIndex("by_name", (q: any) => q.eq("name", user.role))
-    .first();
-  const level = roleDoc?.permissions?.foodVendors;
-  const allowed = level
-    ? level === "write" || level === "admin"
-    : WRITE_FALLBACK_ROLES.includes(user.role);
-  return allowed ? user : null;
-}
-
-type LicenceState = "none" | "valid" | "expiring" | "expired";
-
-/** Work out the vendor's current licence from its application history. */
-function licenceInfo(apps: any[], now: number) {
-  const approved = apps
-    .filter((a) => a.status === "approved" && a.expiryDate)
-    .sort((a, b) => b.expiryDate - a.expiryDate);
-  const current = approved[0];
-  const open = apps.find((a) => a.status === "submitted" || a.status === "under_review");
-  let state: LicenceState = "none";
-  let daysLeft: number | undefined;
-  if (current) {
-    // A licence is valid through the whole of its expiry day.
-    daysLeft = Math.floor((current.expiryDate - now) / DAY) + 1;
-    state = daysLeft < 0 ? "expired" : daysLeft <= RENEWAL_WINDOW_DAYS ? "expiring" : "valid";
-  }
-  return { current, open, state, daysLeft };
-}
-
-/** The status shown to staff: a vendor whose licence has lapsed reads as expired (suspended and revoked are deliberate decisions and always show as they are). */
-function displayStatus(vendor: any, state: LicenceState) {
-  const status = vendor.status || "pending";
-  if ((status === "active" || status === "pending") && state === "expired") return "expired";
-  return status;
-}
+const getWriter = (ctx: any, token: string) => getWriterFor(ctx, token, "foodVendors");
+const nextRegistrationNo = (ctx: any, year: number) => nextRegNo(ctx, "foodVendors", "FV", year);
 
 function durationDays(start: number, end: number) {
   return (end - start) / DAY;
@@ -104,18 +54,6 @@ async function photoProblem(ctx: any, storageId: any): Promise<string | null> {
   if (!String(meta.contentType || "").startsWith("image/")) return "The photo must be an image file";
   if (meta.size > MAX_PHOTO_BYTES) return "The photo is too large (maximum 5 MB)";
   return null;
-}
-
-async function nextRegistrationNo(ctx: any, year: number) {
-  const prefix = `FV-${year}-`;
-  const last = await ctx.db
-    .query("foodVendors")
-    .withIndex("by_reg_no", (q: any) => q.gte("registrationNo", prefix).lt("registrationNo", prefix + "\uffff"))
-    .order("desc")
-    .first();
-  const lastNum = last ? parseInt(String(last.registrationNo).slice(prefix.length), 10) : 0;
-  const next = (Number.isNaN(lastNum) ? 0 : lastNum) + 1;
-  return `${prefix}${String(next).padStart(4, "0")}`;
 }
 
 // ---------- queries ----------
@@ -224,6 +162,19 @@ export const getVendor = query({
     let linkedEstablishment: any = undefined;
     if (vendor.linkedEstablishmentId) linkedEstablishment = await ctx.db.get(vendor.linkedEstablishmentId);
 
+    // Where this vendor has worked (newest first); the one without an end date is current.
+    const assignmentRows = await ctx.db
+      .query("vendorAssignments")
+      .withIndex("by_vendor", (q: any) => q.eq("vendorId", vendorId))
+      .collect();
+    assignmentRows.sort((a: any, b: any) => b.startDate - a.startDate);
+    const assignments = await Promise.all(
+      assignmentRows.map(async (a: any) => {
+        const estab = await ctx.db.get(a.establishmentId);
+        return { ...a, establishmentName: estab?.establishmentName, establishmentRegNo: estab?.registrationNo };
+      })
+    );
+
     return {
       vendor: {
         ...vendor,
@@ -238,6 +189,7 @@ export const getVendor = query({
       renewalOpensAt,
       canApply,
       linkedEstablishment,
+      assignments,
     };
   },
 });
@@ -323,6 +275,16 @@ export const createVendor = mutation({
       createdAt: now,
     });
 
+    if (data.vendorType === "establishment" && data.linkedEstablishmentId) {
+      await ctx.db.insert("vendorAssignments", {
+        vendorId: id,
+        establishmentId: data.linkedEstablishmentId,
+        startDate: now,
+        assignedBy: user._id,
+        createdAt: now,
+      });
+    }
+
     return { success: true, id, registrationNo };
   },
 });
@@ -338,7 +300,6 @@ export const updateVendor = mutation({
     address: v.optional(v.string()),
     districtId: v.optional(v.id("districts")),
     status: v.optional(v.string()),
-    linkedEstablishmentId: v.optional(v.id("foodEstablishments")),
     eventName: v.optional(v.string()),
     eventStartDate: v.optional(v.number()),
     eventEndDate: v.optional(v.number()),
@@ -371,11 +332,6 @@ export const updateVendor = mutation({
         updates.eventEndDate ?? vendor.eventEndDate
       );
       if (err) return { success: false, error: err };
-    }
-
-    if (updates.linkedEstablishmentId) {
-      const estab = await ctx.db.get(updates.linkedEstablishmentId);
-      if (!estab) return { success: false, error: "Linked establishment not found" };
     }
 
     const patch: any = { ...updates, updatedAt: Date.now() };
@@ -457,19 +413,10 @@ export const recordInspection = mutation({
 
 // ---------- licence validity (calculated from the payment, never typed in) ----------
 
-/** Same calendar date one year on, less a day: starting 5 Mar 2026 -> valid to 4 Mar 2027. */
-function oneYearTerm(start: number) {
-  const d = new Date(start);
-  d.setUTCFullYear(d.getUTCFullYear() + 1);
-  return d.getTime() - DAY;
-}
-
 /**
  * Work out the licence period for a payment made on `paymentDate`.
  *  - Special event permits cover the event dates.
- *  - Annual licences run one year from the payment date. When a renewal is paid on or
- *    before the old licence's expiry, the new year starts the day after it, so no paid
- *    time is lost. A lapsed licence restarts from the payment date.
+ *  - Everything else is an annual licence (see annualValidity).
  */
 function computeValidity(vendor: any, apps: any[], paymentDate: number) {
   if (vendor.vendorType === "special_event") {
@@ -479,14 +426,7 @@ function computeValidity(vendor: any, apps: any[], paymentDate: number) {
     if (vendor.eventEndDate < paymentDate) return { error: "The event has already ended" };
     return { start: vendor.eventStartDate as number, end: vendor.eventEndDate as number, basis: "event" };
   }
-  const previous = apps
-    .filter((a) => a.status === "approved" && a.expiryDate)
-    .sort((a, b) => b.expiryDate - a.expiryDate)[0];
-  if (previous && previous.expiryDate >= paymentDate) {
-    const start = previous.expiryDate + DAY;
-    return { start, end: oneYearTerm(start), basis: "continues_previous", previousExpiry: previous.expiryDate as number };
-  }
-  return { start: paymentDate, end: oneYearTerm(paymentDate), basis: "payment_date" };
+  return annualValidity(apps, paymentDate);
 }
 
 /** Licence numbers are unique per holder: one vendor may keep its own number across renewals,

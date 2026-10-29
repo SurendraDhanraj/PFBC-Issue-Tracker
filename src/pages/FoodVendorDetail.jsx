@@ -29,7 +29,7 @@ export default function FoodVendorDetail() {
 
   const data = useQuery(api.vendors.getVendor, { token, vendorId: id });
   const districts = useQuery(api.districts.listDistricts, { activeOnly: true });
-  const establishments = useQuery(api.food.listActiveEstablishments, { token });
+  const establishments = useQuery(api.establishments.listActive, { token });
 
   const updateVendor = useMutation(api.vendors.updateVendor);
   const startApplication = useMutation(api.vendors.startApplication);
@@ -40,6 +40,10 @@ export default function FoodVendorDetail() {
   const generatePhotoUrl = useMutation(api.vendors.generatePhotoUploadUrl);
   const setVendorPhoto = useMutation(api.vendors.setVendorPhoto);
   const removeVendorPhoto = useMutation(api.vendors.removeVendorPhoto);
+  const assignVendor = useMutation(api.establishments.assignVendor);
+  const unassignVendor = useMutation(api.establishments.unassignVendor);
+  const [assignForm, setAssignForm] = useState({ establishmentId: '', startDate: todayInput(), note: '' });
+  const [unassignForm, setUnassignForm] = useState({ endDate: todayInput(), note: '' });
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoError, setPhotoError] = useState('');
 
@@ -74,7 +78,7 @@ export default function FoodVendorDetail() {
 
   const {
     vendor, applications, currentLicence, licenceState, daysLeft,
-    openApplication, renewalOpensAt, canApply, linkedEstablishment,
+    openApplication, renewalOpensAt, canApply, linkedEstablishment, assignments,
   } = data;
   const districtName = (districts || []).find((d) => d._id === vendor.districtId)?.name;
   const isRenewal = applications.some((a) => a.status === 'approved');
@@ -106,7 +110,7 @@ export default function FoodVendorDetail() {
       districtId: vendor.districtId || '', status: vendor.status || 'pending',
       operatingArea: vendor.operatingArea || '', eventName: vendor.eventName || '',
       eventStartDate: toDateInput(vendor.eventStartDate), eventEndDate: toDateInput(vendor.eventEndDate),
-      linkedEstablishmentId: vendor.linkedEstablishmentId || '', notes: vendor.notes || '',
+      notes: vendor.notes || '',
     });
     setError(''); setDialog('edit');
   };
@@ -149,7 +153,6 @@ export default function FoodVendorDetail() {
       eventName: vendor.vendorType === 'special_event' ? f.eventName : undefined,
       eventStartDate: vendor.vendorType === 'special_event' ? dayToMs(f.eventStartDate) : undefined,
       eventEndDate: vendor.vendorType === 'special_event' ? dayToMs(f.eventEndDate) : undefined,
-      linkedEstablishmentId: vendor.vendorType === 'establishment' ? f.linkedEstablishmentId || undefined : undefined,
       notes: f.notes,
     }));
   };
@@ -194,6 +197,22 @@ export default function FoodVendorDetail() {
   const submitReject = (e) => {
     e.preventDefault();
     run(() => rejectApplication({ token, appId: openApplication._id, reason: rejectReason }));
+  };
+
+  const openAssign = () => { setAssignForm({ establishmentId: '', startDate: todayInput(), note: '' }); setError(''); setDialog('assign'); };
+  const openUnassign = () => { setUnassignForm({ endDate: todayInput(), note: '' }); setError(''); setDialog('unassign'); };
+  const submitAssign = (e) => {
+    e.preventDefault();
+    run(() => assignVendor({
+      token, vendorId: id, establishmentId: assignForm.establishmentId,
+      startDate: dayToMs(assignForm.startDate), note: assignForm.note || undefined,
+    }));
+  };
+  const submitUnassign = (e) => {
+    e.preventDefault();
+    run(() => unassignVendor({
+      token, vendorId: id, endDate: dayToMs(unassignForm.endDate), note: unassignForm.note || undefined,
+    }));
   };
 
   const setIssue = (patch) => setIssueForm((f) => ({ ...f, ...patch }));
@@ -364,22 +383,55 @@ export default function FoodVendorDetail() {
                   <Field label="Event dates">{`${fmtDay(vendor.eventStartDate)} → ${fmtDay(vendor.eventEndDate)}`}</Field>
                 </>
               )}
-              {vendor.vendorType === 'establishment' && (
+              {(vendor.vendorType === 'establishment' || linkedEstablishment) && (
                 <Field label="Works within">
                   {linkedEstablishment ? (
                     <Link to={`/food/establishments/${vendor.linkedEstablishmentId}`} style={{ color: 'var(--blue-500)', textDecoration: 'none', fontWeight: 600 }}>
                       🏪 {linkedEstablishment.establishmentName}
                     </Link>
-                  ) : null}
+                  ) : 'Not currently assigned'}
                 </Field>
               )}
             </div>
+            {canManageFood && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+                <button className="btn btn-secondary btn-sm" onClick={openAssign}>
+                  🏪 {linkedEstablishment ? 'Transfer to another establishment' : 'Assign to establishment'}
+                </button>
+                {linkedEstablishment && <button className="btn btn-secondary btn-sm" onClick={openUnassign}>Unassign</button>}
+              </div>
+            )}
             {vendor.notes && (
               <div style={{ marginTop: 14, padding: '12px 14px', background: 'var(--surface-glass)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--text-secondary)' }}>
                 {vendor.notes}
               </div>
             )}
           </div>
+
+          {/* Where this vendor has worked */}
+          {assignments && assignments.length > 0 && (
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: 700, marginBottom: 14 }}>🏪 Establishment history ({assignments.length})</div>
+              <div className="table-container" style={{ borderRadius: 'var(--radius-sm)' }}>
+                <table>
+                  <thead><tr><th>Establishment</th><th>From</th><th>To</th><th>Note</th></tr></thead>
+                  <tbody>
+                    {assignments.map((a) => (
+                      <tr key={a._id}>
+                        <td>
+                          <Link to={`/food/establishments/${a.establishmentId}`} style={{ color: 'var(--blue-500)', textDecoration: 'none', fontWeight: 600 }}>{a.establishmentName || '(removed)'}</Link>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{a.establishmentRegNo}</div>
+                        </td>
+                        <td style={{ fontSize: 13 }}>{fmtDay(a.startDate)}</td>
+                        <td style={{ fontSize: 13 }}>{a.endDate ? fmtDay(a.endDate) : <strong>Current</strong>}</td>
+                        <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{a.note || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Licence history */}
           <div className="card">
@@ -496,13 +548,6 @@ export default function FoodVendorDetail() {
                   <input className="form-control" type="date" value={editForm.eventEndDate || ''} onChange={(e) => setEdit({ eventEndDate: e.target.value })} /></div>
               </div>
             </>
-          )}
-          {vendor.vendorType === 'establishment' && (
-            <div className="form-group"><label className="form-label">Works within establishment</label>
-              <select className="form-control" value={editForm.linkedEstablishmentId || ''} onChange={(e) => setEdit({ linkedEstablishmentId: e.target.value })}>
-                <option value="">Select establishment</option>
-                {(establishments || []).map((x) => <option key={x._id} value={x._id}>{x.establishmentName} ({x.registrationNo})</option>)}
-              </select></div>
           )}
           <div className="form-group"><label className="form-label">Notes</label>
             <textarea className="form-control" rows={3} value={editForm.notes || ''} onChange={(e) => setEdit({ notes: e.target.value })} /></div>
@@ -626,6 +671,57 @@ export default function FoodVendorDetail() {
           <ModalFooter>
             <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
             <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Update'}</button>
+          </ModalFooter>
+        </form>
+      </Modal>
+
+      {/* ---- Assign / transfer to an establishment ---- */}
+      <Modal isOpen={dialog === 'assign'} onClose={close} title={linkedEstablishment ? 'Transfer to Another Establishment' : 'Assign to Establishment'}>
+        <form onSubmit={submitAssign} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {error && <div className="alert alert-error">⚠️ {error}</div>}
+          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            {linkedEstablishment
+              ? `This vendor currently works at ${linkedEstablishment.establishmentName}. Transferring closes that assignment (kept in the history) and starts a new one.`
+              : 'The vendor becomes a "Within Establishment" vendor (any itinerant route or event details are cleared).'}
+          </div>
+          <div className="form-group"><label className="form-label">Establishment *</label>
+            <select className="form-control" value={assignForm.establishmentId} onChange={(e) => setAssignForm((f) => ({ ...f, establishmentId: e.target.value }))} required>
+              <option value="">Select establishment</option>
+              {(establishments || [])
+                .filter((x) => x._id !== vendor.linkedEstablishmentId)
+                .map((x) => <option key={x._id} value={x._id}>{x.establishmentName} ({x.registrationNo})</option>)}
+            </select>
+            {establishments && establishments.length === 0 && (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>No registered establishments yet — register the establishment first.</div>
+            )}
+          </div>
+          <div className="form-row">
+            <div className="form-group"><label className="form-label">Working there from *</label>
+              <input className="form-control" type="date" max={todayInput()} value={assignForm.startDate} onChange={(e) => setAssignForm((f) => ({ ...f, startDate: e.target.value }))} required /></div>
+            <div className="form-group"><label className="form-label">Note</label>
+              <input className="form-control" value={assignForm.note} onChange={(e) => setAssignForm((f) => ({ ...f, note: e.target.value }))} /></div>
+          </div>
+          <ModalFooter>
+            <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={busy || !assignForm.establishmentId}>{busy ? 'Saving…' : linkedEstablishment ? 'Transfer' : 'Assign'}</button>
+          </ModalFooter>
+        </form>
+      </Modal>
+
+      {/* ---- Unassign from the establishment ---- */}
+      <Modal isOpen={dialog === 'unassign'} onClose={close} title="Unassign from Establishment">
+        <form onSubmit={submitUnassign} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {error && <div className="alert alert-error">⚠️ {error}</div>}
+          <div style={{ fontSize: 13 }}>
+            This vendor stops working at <strong>{linkedEstablishment?.establishmentName}</strong>. The assignment is kept in the history.
+          </div>
+          <div className="form-group"><label className="form-label">Last day working there *</label>
+            <input className="form-control" type="date" max={todayInput()} value={unassignForm.endDate} onChange={(e) => setUnassignForm((f) => ({ ...f, endDate: e.target.value }))} required /></div>
+          <div className="form-group"><label className="form-label">Note</label>
+            <input className="form-control" value={unassignForm.note} onChange={(e) => setUnassignForm((f) => ({ ...f, note: e.target.value }))} /></div>
+          <ModalFooter>
+            <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Unassign'}</button>
           </ModalFooter>
         </form>
       </Modal>

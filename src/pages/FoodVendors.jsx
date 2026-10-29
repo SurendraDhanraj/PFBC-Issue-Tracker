@@ -60,7 +60,7 @@ export default function FoodVendors() {
 
   const vendors = useQuery(api.vendors.listVendors, { token });
   const districts = useQuery(api.districts.listDistricts, { activeOnly: true });
-  const establishments = useQuery(api.food.listActiveEstablishments, { token });
+  const establishments = useQuery(api.establishments.listActive, { token });
   const createVendor = useMutation(api.vendors.createVendor);
   const generatePhotoUrl = useMutation(api.vendors.generatePhotoUploadUrl);
 

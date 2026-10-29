@@ -245,3 +245,15 @@ export async function generateVendorBadge({ vendor, licence, districtName, photo
 
   doc.save(`Badge_${vendor.registrationNo}.pdf`);
 }
+
+export const ESTABLISHMENT_TYPES = [
+  'Restaurant',
+  'Bar / Pub',
+  'Bakery',
+  'Snackette / Fast food',
+  'Supermarket / Grocery',
+  'Cafeteria / Canteen',
+  'Caterer',
+  'Butchery / Fish vendor',
+  'Other',
+];

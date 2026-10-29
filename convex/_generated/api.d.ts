@@ -11,9 +11,11 @@
 import type * as auth from "../auth.js";
 import type * as categories from "../categories.js";
 import type * as districts from "../districts.js";
+import type * as establishments from "../establishments.js";
 import type * as food from "../food.js";
 import type * as issues from "../issues.js";
 import type * as leave from "../leave.js";
+import type * as licenceCommon from "../licenceCommon.js";
 import type * as roles from "../roles.js";
 import type * as seed from "../seed.js";
 import type * as seedDistricts from "../seedDistricts.js";
@@ -32,9 +34,11 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   categories: typeof categories;
   districts: typeof districts;
+  establishments: typeof establishments;
   food: typeof food;
   issues: typeof issues;
   leave: typeof leave;
+  licenceCommon: typeof licenceCommon;
   roles: typeof roles;
   seed: typeof seed;
   seedDistricts: typeof seedDistricts;

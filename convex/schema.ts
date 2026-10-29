@@ -293,6 +293,21 @@ export default defineSchema({
     .index("by_year", ["year"])
     .index("by_licence", ["licenceNo"]),
 
+  // Which establishment a vendor works at (the row without an endDate is the current one)
+  vendorAssignments: defineTable({
+    vendorId: v.id("foodVendors"),
+    establishmentId: v.id("foodEstablishments"),
+    startDate: v.number(),
+    endDate: v.optional(v.number()),
+    previousType: v.optional(v.string()), // vendor type before being assigned
+    note: v.optional(v.string()),
+    assignedBy: v.id("users"),
+    endedBy: v.optional(v.id("users")),
+    createdAt: v.number(),
+  })
+    .index("by_vendor", ["vendorId"])
+    .index("by_establishment", ["establishmentId"]),
+
   // Leave
   leaveTypes: defineTable({
     name: v.string(),

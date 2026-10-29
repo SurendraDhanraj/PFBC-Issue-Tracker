@@ -842,3 +842,146 @@ input[type="file"] { display: none; }
   background: linear-gradient(90deg, var(--blue-500), var(--cyan-500));
   transition: width 0.3s ease;
 }
+
+/* ===== REGISTRATION WIZARD ===== */
+.wizard-steps {
+  display: flex; gap: 8px; margin-bottom: 20px; justify-content: center;
+}
+.wizard-step {
+  display: flex; align-items: center; gap: 6px; padding: 6px 14px;
+  border-radius: 20px; font-size: 12px; font-weight: 600;
+  background: var(--surface-glass); color: var(--text-muted);
+  border: 1.5px solid var(--border); transition: all 0.2s ease;
+}
+.wizard-step.active {
+  background: var(--blue-50); color: var(--blue-600);
+  border-color: var(--blue-400);
+}
+.wizard-step.completed {
+  background: var(--status-resolved-bg); color: var(--status-resolved);
+  border-color: var(--status-resolved);
+}
+.wizard-step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%; font-size: 11px;
+  background: var(--border); color: var(--text-muted);
+}
+.wizard-step.active .wizard-step-num {
+  background: var(--blue-500); color: white;
+}
+.wizard-step.completed .wizard-step-num {
+  background: var(--status-resolved); color: white;
+}
+
+.wizard-type-cards {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+}
+@media (max-width: 640px) {
+  .wizard-type-cards { grid-template-columns: 1fr; }
+}
+.wizard-type-card {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 24px 16px; border-radius: var(--radius-md);
+  border: 2px solid var(--border); background: var(--surface-glass);
+  cursor: pointer; transition: all 0.2s ease; text-align: center; gap: 8px;
+}
+.wizard-type-card:hover {
+  border-color: var(--blue-400); background: var(--blue-50);
+  transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+}
+.wizard-type-card.selected {
+  border-color: var(--blue-500); background: var(--blue-50);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+}
+.wizard-type-card .wizard-card-emoji { font-size: 36px; }
+.wizard-type-card .wizard-card-title { font-weight: 700; font-size: 15px; color: var(--text-primary); }
+.wizard-type-card .wizard-card-desc { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+
+/* ===== VENDOR TYPE BADGES ===== */
+.vendor-type-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;
+  white-space: nowrap;
+}
+.vendor-type-itinerant {
+  background: rgba(139,92,246,0.1); color: #7c3aed; border: 1px solid rgba(139,92,246,0.2);
+}
+.vendor-type-special_event {
+  background: rgba(245,158,11,0.1); color: #d97706; border: 1px solid rgba(245,158,11,0.2);
+}
+.vendor-type-establishment {
+  background: rgba(16,185,129,0.1); color: #059669; border: 1px solid rgba(16,185,129,0.2);
+}
+
+/* ===== VENDOR TYPE FILTER TABS ===== */
+.vendor-type-tabs {
+  display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.vendor-type-tabs button {
+  padding: 6px 16px; border-radius: 20px; border: 1.5px solid var(--border);
+  background: var(--surface-glass); color: var(--text-secondary);
+  font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s ease;
+}
+.vendor-type-tabs button:hover {
+  border-color: var(--blue-400); color: var(--blue-600);
+}
+.vendor-type-tabs button.active {
+  background: var(--blue-500); color: white; border-color: var(--blue-500);
+}
+
+/* ===== LICENCE STATUS DOTS (list pages) ===== */
+.licence-dot {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 500; white-space: nowrap;
+}
+.licence-dot::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.licence-active::before { background: #10b981; box-shadow: 0 0 6px rgba(16,185,129,0.4); }
+.licence-active { color: #059669; }
+.licence-expiring::before { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,0.4); }
+.licence-expiring { color: #d97706; }
+.licence-expired::before { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.4); }
+.licence-expired { color: #dc2626; }
+.licence-none::before { background: #9ca3af; }
+.licence-none { color: #6b7280; }
+
+/* ===== LICENCE STATUS CARD (detail pages) ===== */
+.licence-status-card {
+  padding: 16px 20px; border-radius: var(--radius-md); margin-bottom: 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap;
+  background: var(--surface-glass); border: 1.5px solid var(--border);
+}
+.licence-status-card .licence-info { display: flex; flex-direction: column; gap: 2px; }
+.licence-status-card .licence-number { font-weight: 700; font-size: 16px; color: var(--text-primary); }
+.licence-status-card .licence-expiry { font-size: 12px; color: var(--text-muted); }
+.licence-status-text {
+  padding: 5px 14px; border-radius: 16px; font-size: 12px; font-weight: 600;
+}
+.licence-status-active {
+  background: rgba(16,185,129,0.1); color: #059669; border: 1px solid rgba(16,185,129,0.2);
+}
+.licence-status-expiring {
+  background: rgba(245,158,11,0.1); color: #d97706; border: 1px solid rgba(245,158,11,0.2);
+  animation: pulse-amber 2s infinite;
+}
+.licence-status-expired {
+  background: rgba(239,68,68,0.1); color: #dc2626; border: 1px solid rgba(239,68,68,0.2);
+}
+.licence-status-none {
+  background: var(--surface-glass); color: var(--text-muted); border: 1px solid var(--border);
+}
+@keyframes pulse-amber {
+  0%, 100% { opacity: 1; } 50% { opacity: 0.7; }
+}
+
+/* ===== REVIEW SUMMARY (wizard step 3) ===== */
+.review-summary {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  padding: 16px; background: var(--surface-glass);
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+}
+@media (max-width: 500px) {
+  .review-summary { grid-template-columns: 1fr; }
+}

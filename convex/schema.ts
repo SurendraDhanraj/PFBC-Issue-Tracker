@@ -169,7 +169,20 @@ export default defineSchema({
       v.literal("expired"),
       v.literal("revoked")
     ),
-    vendorType: v.optional(v.string()),
+    // Vendor classification
+    vendorType: v.union(
+      v.literal("itinerant"),
+      v.literal("special_event"),
+      v.literal("establishment")
+    ),
+    // Establishment-linked vendors
+    linkedEstablishmentId: v.optional(v.id("foodEstablishments")),
+    // Special event vendors (max 30-day duration)
+    eventName: v.optional(v.string()),
+    eventStartDate: v.optional(v.number()),
+    eventEndDate: v.optional(v.number()),
+    // Itinerant vendors — operating area/route
+    operatingArea: v.optional(v.string()),
     notes: v.optional(v.string()),
     createdBy: v.id("users"),
     createdAt: v.number(),
@@ -177,7 +190,9 @@ export default defineSchema({
   })
     .index("by_district", ["districtId"])
     .index("by_status", ["status"])
-    .index("by_reg_no", ["registrationNo"]),
+    .index("by_reg_no", ["registrationNo"])
+    .index("by_type", ["vendorType"])
+    .index("by_establishment", ["linkedEstablishmentId"]),
 
   vendorApplications: defineTable({
     vendorId: v.id("foodVendors"),
@@ -195,12 +210,23 @@ export default defineSchema({
     expiryDate: v.optional(v.number()),
     fee: v.optional(v.number()),
     feePaid: v.optional(v.boolean()),
+    // Licence tracking
+    licenceNo: v.optional(v.string()),
+    // Payment tracking
+    paymentDate: v.optional(v.number()),
+    paymentMethod: v.optional(v.string()),  // cash, cheque, bank_transfer
+    receiptNo: v.optional(v.string()),
+    // Inspection (required for itinerant vendors too)
+    inspectionDate: v.optional(v.number()),
+    inspectedBy: v.optional(v.id("users")),
+    inspectionNotes: v.optional(v.string()),
     notes: v.optional(v.string()),
     createdBy: v.id("users"),
     createdAt: v.number(),
   })
     .index("by_vendor", ["vendorId"])
-    .index("by_year", ["year"]),
+    .index("by_year", ["year"])
+    .index("by_licence", ["licenceNo"]),
 
   // Food Establishments (fixed premises)
   foodEstablishments: defineTable({
@@ -247,6 +273,13 @@ export default defineSchema({
     expiryDate: v.optional(v.number()),
     fee: v.optional(v.number()),
     feePaid: v.optional(v.boolean()),
+    // Licence tracking
+    licenceNo: v.optional(v.string()),
+    // Payment tracking
+    paymentDate: v.optional(v.number()),
+    paymentMethod: v.optional(v.string()),  // cash, cheque, bank_transfer
+    receiptNo: v.optional(v.string()),
+    // Inspection
     inspectionDate: v.optional(v.number()),
     inspectedBy: v.optional(v.id("users")),
     inspectionNotes: v.optional(v.string()),
@@ -255,7 +288,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_establishment", ["establishmentId"])
-    .index("by_year", ["year"]),
+    .index("by_year", ["year"])
+    .index("by_licence", ["licenceNo"]),
 
   // Leave
   leaveTypes: defineTable({

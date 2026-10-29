@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, Component } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { BrandingProvider, useBranding } from './context/BrandingContext';
@@ -35,13 +35,42 @@ function BrandingApplier() {
   return null;
 }
 
+/** Shows the real error instead of a blank screen when a page crashes */
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error('Page crashed:', error, info?.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 40, textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+          <h2 style={{ margin: '0 0 8px' }}>Something went wrong</h2>
+          <p style={{ color: '#64748b', fontSize: 13, wordBreak: 'break-word', maxWidth: 560, margin: '0 auto 16px' }}>
+            {String(this.state.error?.message || this.state.error)}
+          </p>
+          <button className="btn btn-primary" onClick={() => window.location.reload()}>Reload Page</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function AppLayout({ children }) {
   return (
     <MobileNavProvider>
       <div className="app-layout">
         <Sidebar />
         <Header />
-        <main className="main-content fade-in">{children}</main>
+        <main className="main-content fade-in"><ErrorBoundary>{children}</ErrorBoundary></main>
         <BottomNav />
       </div>
     </MobileNavProvider>

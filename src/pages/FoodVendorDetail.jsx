@@ -7,8 +7,9 @@ import StatusBadge from '../components/StatusBadge';
 import Modal, { ModalFooter } from '../components/Modal';
 import {
   TYPE_LABELS, PAYMENT_METHODS, LICENCE_STATE, fmtDay, fmtMoment, toDateInput, todayInput,
-  dayToMs, daysLeftText, generateVendorBadge, preparePhoto, uploadPhotoBlob,
+  dayToMs, daysLeftText, preparePhoto, uploadPhotoBlob,
 } from '../utils/vendors';
+import { generateVendorBadge } from '../utils/vendorBadge';
 
 const EDITABLE_STATUSES = ['active', 'pending', 'suspended', 'revoked'];
 
@@ -262,7 +263,7 @@ export default function FoodVendorDetail() {
           className="btn btn-secondary btn-sm"
           disabled={!canPrintBadge}
           title={canPrintBadge ? 'Print ID badge (5.5 x 8.5 in PDF)' : 'A badge can be printed once the vendor holds a valid licence'}
-          onClick={() => generateVendorBadge({ vendor, licence: currentLicence, districtName, photoUrl: vendor.photoUrl })}
+          onClick={() => generateVendorBadge({ vendor, licence: currentLicence, districtName, photoUrl: vendor.photoUrl, locationName: vendor.vendorType === 'establishment' ? linkedEstablishment?.establishmentName : vendor.vendorType === 'special_event' ? vendor.eventName : vendor.operatingArea })}
         >
           🪪 Print Badge
         </button>

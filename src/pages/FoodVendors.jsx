@@ -7,6 +7,7 @@ import StatusBadge from '../components/StatusBadge';
 import Modal, { ModalFooter } from '../components/Modal';
 import {
   TYPE_LABELS, TYPE_DESCRIPTIONS, LICENCE_STATE, fmtDay, dayToMs, daysLeftText,
+  preparePhoto, uploadPhotoBlob,
 } from '../utils/vendors';
 
 const EMPTY_FORM = {
@@ -61,6 +62,33 @@ export default function FoodVendors() {
   const districts = useQuery(api.districts.listDistricts, { activeOnly: true });
   const establishments = useQuery(api.food.listActiveEstablishments, { token });
   const createVendor = useMutation(api.vendors.createVendor);
+  const generatePhotoUrl = useMutation(api.vendors.generatePhotoUploadUrl);
+
+  // Optional photo chosen in the wizard (already cropped/compressed), uploaded when registering
+  const [photoBlob, setPhotoBlob] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState('');
+  const [uploadedPhotoId, setUploadedPhotoId] = useState(null);
+
+  const clearPhoto = () => {
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoBlob(null); setPhotoPreview(''); setUploadedPhotoId(null);
+  };
+
+  const pickPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setError('');
+    try {
+      const blob = await preparePhoto(file);
+      if (photoPreview) URL.revokeObjectURL(photoPreview);
+      setPhotoBlob(blob);
+      setPhotoPreview(URL.createObjectURL(blob));
+      setUploadedPhotoId(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   const districtMap = useMemo(
     () => Object.fromEntries((districts || []).map((d) => [d._id, d])),
@@ -95,7 +123,7 @@ export default function FoodVendors() {
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
   const closeWizard = () => {
-    setShowAdd(false); setStep(1); setForm(EMPTY_FORM); setError('');
+    setShowAdd(false); setStep(1); setForm(EMPTY_FORM); setError(''); clearPhoto();
   };
 
   /** Validate step 2 before moving to the review step. */
@@ -126,8 +154,14 @@ export default function FoodVendors() {
     setError('');
     setSaving(true);
     try {
+      let photoStorageId = uploadedPhotoId;
+      if (photoBlob && !photoStorageId) {
+        photoStorageId = await uploadPhotoBlob(() => generatePhotoUrl({ token }), photoBlob);
+        setUploadedPhotoId(photoStorageId); // reuse on retry if registration is rejected
+      }
       const res = await createVendor({
         token,
+        photoStorageId: photoStorageId || undefined,
         vendorType: form.vendorType,
         vendorName: form.vendorName,
         vendorSurname: form.vendorSurname,
@@ -233,9 +267,16 @@ export default function FoodVendors() {
               {filtered.map((v) => (
                 <tr key={v._id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/food/vendors/${v._id}`)}>
                   <td>
-                    <div style={{ fontWeight: 600 }}>{[v.vendorName, v.vendorSurname || v.ownerName].filter(Boolean).join(' ') || '—'}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {v.vendorType === 'itinerant' ? v.operatingArea : v.vendorType === 'establishment' ? v.linkedEstablishmentName : v.eventName}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 36, height: 45, borderRadius: 6, overflow: 'hidden', flexShrink: 0, background: 'var(--surface-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+                        {v.photoUrl ? <img src={v.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '👤'}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{[v.vendorName, v.vendorSurname || v.ownerName].filter(Boolean).join(' ') || '—'}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                          {v.vendorType === 'itinerant' ? v.operatingArea : v.vendorType === 'establishment' ? v.linkedEstablishmentName : v.eventName}
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td><span className="tag">{v.registrationNo || '—'}</span></td>
@@ -299,6 +340,24 @@ export default function FoodVendors() {
 
         {step === 2 && (
           <form onSubmit={goReview} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="form-group">
+              <label className="form-label">Photo (optional)</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 64, height: 80, borderRadius: 8, overflow: 'hidden', background: 'var(--surface-glass)', border: '1px solid var(--border, #e2e8f0)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>
+                  {photoPreview ? <img src={photoPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '👤'}
+                </div>
+                <div>
+                  <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
+                    📷 {photoBlob ? 'Change photo' : 'Choose photo'}
+                    <input type="file" accept="image/*" hidden onChange={pickPhoto} />
+                  </label>
+                  {photoBlob && (
+                    <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: 8 }} onClick={clearPhoto}>Remove</button>
+                  )}
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Shown on the vendor's ID badge. Cropped to a portrait shape.</div>
+                </div>
+              </div>
+            </div>
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">First name *</label>
@@ -391,6 +450,7 @@ export default function FoodVendors() {
               {[
                 ['Type', <span className={`vendor-type-badge vendor-type-${form.vendorType}`}>{TYPE_LABELS[form.vendorType]}</span>],
                 ['First name', form.vendorName],
+                ['Photo', photoPreview ? <img src={photoPreview} alt="" style={{ width: 48, height: 60, objectFit: 'cover', borderRadius: 6 }} /> : 'None'],
                 ['Surname', form.vendorSurname],
                 ['Phone / email', [form.phone, form.email].filter(Boolean).join(' · ') || '—'],
                 ['District', districtMap[form.districtId]?.name || '—'],

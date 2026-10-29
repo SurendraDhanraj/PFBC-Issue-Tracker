@@ -7,7 +7,7 @@ import StatusBadge from '../components/StatusBadge';
 import Modal, { ModalFooter } from '../components/Modal';
 import {
   TYPE_LABELS, PAYMENT_METHODS, LICENCE_STATE, fmtDay, fmtMoment, toDateInput, todayInput,
-  dayToMs, oneYearOn, addDays, daysLeftText, generateVendorBadge,
+  dayToMs, oneYearOn, addDays, daysLeftText, generateVendorBadge, preparePhoto, uploadPhotoBlob,
 } from '../utils/vendors';
 
 const EDITABLE_STATUSES = ['active', 'pending', 'suspended', 'revoked'];
@@ -36,6 +36,11 @@ export default function FoodVendorDetail() {
   const recordInspection = useMutation(api.vendors.recordInspection);
   const issueLicence = useMutation(api.vendors.issueLicence);
   const rejectApplication = useMutation(api.vendors.rejectApplication);
+  const generatePhotoUrl = useMutation(api.vendors.generatePhotoUploadUrl);
+  const setVendorPhoto = useMutation(api.vendors.setVendorPhoto);
+  const removeVendorPhoto = useMutation(api.vendors.removeVendorPhoto);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState('');
 
   // which dialog is open: edit | apply | inspect | issue | reject | null
   const [dialog, setDialog] = useState(null);
@@ -182,6 +187,38 @@ export default function FoodVendorDetail() {
   const setIssue = (patch) => setIssueForm((f) => ({ ...f, ...patch }));
   const setEdit = (patch) => setEditForm((f) => ({ ...f, ...patch }));
 
+  /** Crop, upload and attach a new vendor photo straight away. */
+  const changePhoto = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setPhotoError('');
+    setPhotoBusy(true);
+    try {
+      const blob = await preparePhoto(file);
+      const storageId = await uploadPhotoBlob(() => generatePhotoUrl({ token }), blob);
+      const res = await setVendorPhoto({ token, vendorId: id, storageId });
+      if (res && res.success === false) setPhotoError(res.error || 'Could not save the photo.');
+    } catch (err) {
+      setPhotoError(err?.message || 'Could not save the photo.');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const deletePhoto = async () => {
+    setPhotoError('');
+    setPhotoBusy(true);
+    try {
+      const res = await removeVendorPhoto({ token, vendorId: id });
+      if (res && res.success === false) setPhotoError(res.error || 'Could not remove the photo.');
+    } catch (err) {
+      setPhotoError(err?.message || 'Could not remove the photo.');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
   const canPrintBadge = currentLicence && (licenceState === 'valid' || licenceState === 'expiring');
 
   return (
@@ -194,7 +231,7 @@ export default function FoodVendorDetail() {
           className="btn btn-secondary btn-sm"
           disabled={!canPrintBadge}
           title={canPrintBadge ? 'Print ID badge (5.5 x 8.5 in PDF)' : 'A badge can be printed once the vendor holds a valid licence'}
-          onClick={() => generateVendorBadge({ vendor, licence: currentLicence, districtName })}
+          onClick={() => generateVendorBadge({ vendor, licence: currentLicence, districtName, photoUrl: vendor.photoUrl })}
         >
           🪪 Print Badge
         </button>
@@ -270,7 +307,22 @@ export default function FoodVendorDetail() {
           {/* Vendor details */}
           <div className="card" style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 40 }}>🛒</div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ width: 72, height: 90, borderRadius: 8, overflow: 'hidden', background: 'var(--surface-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34 }}>
+                  {vendor.photoUrl ? <img src={vendor.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '👤'}
+                </div>
+                {canManageFood && (
+                  <div style={{ marginTop: 6, display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' }}>
+                    <label className="btn btn-secondary btn-sm" style={{ cursor: photoBusy ? 'wait' : 'pointer', padding: '2px 8px', fontSize: 11 }}>
+                      {photoBusy ? 'Saving…' : vendor.photoUrl ? 'Change' : '📷 Upload'}
+                      <input type="file" accept="image/*" hidden disabled={photoBusy} onChange={changePhoto} />
+                    </label>
+                    {vendor.photoUrl && !photoBusy && (
+                      <button type="button" className="btn btn-secondary btn-sm" style={{ padding: '2px 8px', fontSize: 11 }} onClick={deletePhoto} title="Remove photo">✕</button>
+                    )}
+                  </div>
+                )}
+              </div>
               <div>
                 <div style={{ fontSize: 20, fontWeight: 800 }}>{[vendor.vendorName, vendor.vendorSurname || vendor.ownerName].filter(Boolean).join(' ')}</div>
                 <div style={{ color: 'var(--text-muted)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -280,6 +332,7 @@ export default function FoodVendorDetail() {
               </div>
               <div style={{ marginLeft: 'auto' }}><StatusBadge status={vendor.displayStatus} size="lg" /></div>
             </div>
+            {photoError && <div className="alert alert-error" style={{ marginBottom: 12 }}>⚠️ {photoError}</div>}
             <div className="divider" />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
               <Field label="First name">{vendor.vendorName}</Field>

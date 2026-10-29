@@ -69,11 +69,73 @@ export function daysLeftText(state, daysLeft) {
   return `${daysLeft} day${daysLeft === 1 ? '' : 's'} remaining`;
 }
 
+/** Vendor photos are stored as 4:5 portrait JPEGs, matching the box on the badge. */
+const PHOTO_W = 640;
+const PHOTO_H = 800;
+
+/**
+ * Centre-crop an image file to 4:5 and re-encode as a JPEG so uploads are small and
+ * every photo fits the badge the same way. Throws if the browser cannot read the file.
+ */
+export async function preparePhoto(file) {
+  if (!file || !file.type.startsWith('image/')) throw new Error('Please choose an image file.');
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error('That image could not be read. Try a JPEG or PNG photo.');
+  }
+  const targetRatio = PHOTO_W / PHOTO_H;
+  let sw = bitmap.width;
+  let sh = bitmap.height;
+  if (sw / sh > targetRatio) sw = Math.round(sh * targetRatio);
+  else sh = Math.round(sw / targetRatio);
+  const sx = Math.round((bitmap.width - sw) / 2);
+  const sy = Math.round((bitmap.height - sh) / 2);
+  const canvas = document.createElement('canvas');
+  canvas.width = PHOTO_W;
+  canvas.height = PHOTO_H;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, PHOTO_W, PHOTO_H);
+  ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, PHOTO_W, PHOTO_H);
+  bitmap.close?.();
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+  if (!blob) throw new Error('That image could not be processed.');
+  return blob;
+}
+
+/** Upload a prepared photo to Convex storage and return its storage id. */
+export async function uploadPhotoBlob(generateUrl, blob) {
+  const uploadUrl = await generateUrl();
+  const res = await fetch(uploadUrl, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+  if (!res.ok) throw new Error('The photo upload failed. Please try again.');
+  const { storageId } = await res.json();
+  return storageId;
+}
+
+/** Fetch a stored photo as a data URL for the PDF; returns null if it cannot be loaded. */
+async function loadPhotoDataUrl(url) {
+  if (!url) return null;
+  try {
+    const blob = await (await fetch(url)).blob();
+    return await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Printable vendor ID badge on a 5.5 x 8.5 inch page (PDF).
  * `licence` is the vendor's current approved application.
  */
-export function generateVendorBadge({ vendor, licence, districtName }) {
+export async function generateVendorBadge({ vendor, licence, districtName, photoUrl }) {
+  const photo = await loadPhotoDataUrl(photoUrl);
   const doc = new jsPDF({ unit: 'in', format: [5.5, 8.5] });
   const W = 5.5;
   const cx = W / 2;
@@ -108,13 +170,20 @@ export function generateVendorBadge({ vendor, licence, districtName }) {
   doc.setDrawColor(200, 200, 205);
   doc.setFillColor(235, 235, 240);
   doc.roundedRect(cx - 0.65, 1.95, 1.3, 1.6, 0.1, 0.1, 'FD');
-  doc.setFillColor(190, 190, 200);
-  doc.circle(cx, 2.55, 0.25, 'F');
-  doc.roundedRect(cx - 0.4, 2.85, 0.8, 0.5, 0.2, 0.2, 'F');
-  doc.setTextColor(150, 150, 160);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.text('PHOTO', cx, 3.5, { align: 'center' });
+  if (photo) {
+    // photo is already cropped to the same 4:5 shape as the box
+    doc.addImage(photo, 'JPEG', cx - 0.65, 1.95, 1.3, 1.6);
+    doc.setDrawColor(200, 200, 205);
+    doc.roundedRect(cx - 0.65, 1.95, 1.3, 1.6, 0.1, 0.1, 'S');
+  } else {
+    doc.setFillColor(190, 190, 200);
+    doc.circle(cx, 2.55, 0.25, 'F');
+    doc.roundedRect(cx - 0.4, 2.85, 0.8, 0.5, 0.2, 0.2, 'F');
+    doc.setTextColor(150, 150, 160);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.text('PHOTO', cx, 3.5, { align: 'center' });
+  }
 
   // Registration number
   doc.setFillColor(30, 64, 175);

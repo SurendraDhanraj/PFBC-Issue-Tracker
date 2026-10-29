@@ -156,6 +156,7 @@ export default defineSchema({
     vendorName: v.string(),
     vendorSurname: v.optional(v.string()),
     ownerName: v.optional(v.string()), // legacy: replaced by vendorSurname
+    photoStorageId: v.optional(v.id("_storage")),
     phone: v.optional(v.string()),
     email: v.optional(v.string()),
     address: v.string(),

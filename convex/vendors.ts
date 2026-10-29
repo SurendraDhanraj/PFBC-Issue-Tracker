@@ -95,6 +95,17 @@ function validateEventDates(start?: number, end?: number): string | null {
   return null;
 }
 
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+
+/** Check an uploaded file really is a reasonably sized image. Returns an error message, or null if fine. */
+async function photoProblem(ctx: any, storageId: any): Promise<string | null> {
+  const meta = await ctx.db.system.get(storageId);
+  if (!meta) return "The uploaded photo could not be found";
+  if (!String(meta.contentType || "").startsWith("image/")) return "The photo must be an image file";
+  if (meta.size > MAX_PHOTO_BYTES) return "The photo is too large (maximum 5 MB)";
+  return null;
+}
+
 async function nextRegistrationNo(ctx: any, year: number) {
   const prefix = `FV-${year}-`;
   const last = await ctx.db
@@ -158,6 +169,7 @@ export const listVendors = query({
           licenceExpiry: info.current?.expiryDate,
           hasOpenApplication: !!info.open,
           linkedEstablishmentName,
+          photoUrl: vendor.photoStorageId ? await ctx.storage.getUrl(vendor.photoStorageId) : null,
         };
       })
     );
@@ -213,7 +225,11 @@ export const getVendor = query({
     if (vendor.linkedEstablishmentId) linkedEstablishment = await ctx.db.get(vendor.linkedEstablishmentId);
 
     return {
-      vendor: { ...vendor, displayStatus: displayStatus(vendor, info.state) },
+      vendor: {
+        ...vendor,
+        displayStatus: displayStatus(vendor, info.state),
+        photoUrl: vendor.photoStorageId ? await ctx.storage.getUrl(vendor.photoStorageId) : null,
+      },
       applications: history,
       currentLicence: (info.current && history.find((h: any) => h._id === info.current._id)) || null,
       licenceState: info.state,
@@ -244,11 +260,16 @@ export const createVendor = mutation({
     eventEndDate: v.optional(v.number()),
     operatingArea: v.optional(v.string()),
     notes: v.optional(v.string()),
+    photoStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, { token, ...data }) => {
     const user = await getWriter(ctx, token);
     if (!user) return { success: false, error: "You do not have permission to register vendors" };
 
+    if (data.photoStorageId) {
+      const problem = await photoProblem(ctx, data.photoStorageId);
+      if (problem) return { success: false, error: problem };
+    }
     if (!data.vendorName.trim() || !data.vendorSurname.trim() || !data.address.trim()) {
       return { success: false, error: "First name, surname and address are required" };
     }
@@ -521,6 +542,49 @@ export const rejectApplication = mutation({
     }
     if (!reason.trim()) return { success: false, error: "Give a reason for rejecting the application" };
     await ctx.db.patch(appId, { status: "rejected", notes: reason.trim() });
+    return { success: true };
+  },
+});
+
+// ---------- vendor photo ----------
+
+/** Step 1 of an upload: a short-lived URL the browser POSTs the image to. */
+export const generatePhotoUploadUrl = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    const user = await getWriter(ctx, token);
+    if (!user) throw new Error("You do not have permission to upload vendor photos");
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/** Step 2: attach the uploaded image to a vendor (replacing and deleting any earlier photo). */
+export const setVendorPhoto = mutation({
+  args: { token: v.string(), vendorId: v.id("foodVendors"), storageId: v.id("_storage") },
+  handler: async (ctx, { token, vendorId, storageId }) => {
+    const user = await getWriter(ctx, token);
+    if (!user) return { success: false, error: "You do not have permission to upload vendor photos" };
+    const vendor = await ctx.db.get(vendorId);
+    if (!vendor) return { success: false, error: "Vendor not found" };
+    const problem = await photoProblem(ctx, storageId);
+    if (problem) return { success: false, error: problem };
+    if (vendor.photoStorageId && vendor.photoStorageId !== storageId) {
+      await ctx.storage.delete(vendor.photoStorageId);
+    }
+    await ctx.db.patch(vendorId, { photoStorageId: storageId, updatedAt: Date.now() });
+    return { success: true };
+  },
+});
+
+export const removeVendorPhoto = mutation({
+  args: { token: v.string(), vendorId: v.id("foodVendors") },
+  handler: async (ctx, { token, vendorId }) => {
+    const user = await getWriter(ctx, token);
+    if (!user) return { success: false, error: "You do not have permission to remove vendor photos" };
+    const vendor = await ctx.db.get(vendorId);
+    if (!vendor) return { success: false, error: "Vendor not found" };
+    if (vendor.photoStorageId) await ctx.storage.delete(vendor.photoStorageId);
+    await ctx.db.patch(vendorId, { photoStorageId: undefined, updatedAt: Date.now() });
     return { success: true };
   },
 });

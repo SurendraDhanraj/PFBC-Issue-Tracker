@@ -9,6 +9,9 @@ export default defineSchema({
     tagline: v.optional(v.string()),
     faviconStorageId: v.optional(v.id("_storage")),
     splashStorageId: v.optional(v.id("_storage")),
+    // Who signs the food vendor badge (when unset, the system picks from current staffing)
+    badgeMohUserId: v.optional(v.id("users")),
+    badgePhiUserId: v.optional(v.id("users")),
   }).index("by_key", ["key"]),
 
   // Password resets
@@ -34,6 +37,7 @@ export default defineSchema({
     active: v.boolean(),
     phone: v.optional(v.string()),
     initials: v.optional(v.string()),
+    signatureStorageId: v.optional(v.id("_storage")), // signature image used on badges
     createdAt: v.number(),
   })
     .index("by_email", ["email"])

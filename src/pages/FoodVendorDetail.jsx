@@ -31,6 +31,8 @@ export default function FoodVendorDetail() {
   const data = useQuery(api.vendors.getVendor, { token, vendorId: id });
   const districts = useQuery(api.districts.listDistricts, { activeOnly: true });
   const establishments = useQuery(api.establishments.listActive, { token });
+  // Who signs the badge right now (configured in the Admin Panel, otherwise from current staffing)
+  const signatories = useQuery(api.signatures.getBadgeSignatories, { token, issuedBy: data?.currentLicence?.approvedBy });
 
   const updateVendor = useMutation(api.vendors.updateVendor);
   const startApplication = useMutation(api.vendors.startApplication);
@@ -216,6 +218,18 @@ export default function FoodVendorDetail() {
     }));
   };
 
+  /** Print the badge; warn first if a signer has no signature image on file. */
+  const printBadge = () => {
+    const missing = [];
+    if (!signatories?.moh?.signatureUrl) missing.push('Medical Officer of Health');
+    if (!signatories?.phi?.signatureUrl) missing.push('Public Health Inspector');
+    if (missing.length && !window.confirm(`No signature image is set for the ${missing.join(' and ')}, so that space will be blank on the badge. Print anyway?`)) return;
+    generateVendorBadge({
+      vendor, licence: currentLicence, districtName, photoUrl: vendor.photoUrl, signatories,
+      locationName: vendor.vendorType === 'establishment' ? linkedEstablishment?.establishmentName : vendor.vendorType === 'special_event' ? vendor.eventName : vendor.operatingArea,
+    });
+  };
+
   const setIssue = (patch) => setIssueForm((f) => ({ ...f, ...patch }));
   const setEdit = (patch) => setEditForm((f) => ({ ...f, ...patch }));
 
@@ -263,7 +277,7 @@ export default function FoodVendorDetail() {
           className="btn btn-secondary btn-sm"
           disabled={!canPrintBadge}
           title={canPrintBadge ? 'Print ID badge (5.5 x 8.5 in PDF)' : 'A badge can be printed once the vendor holds a valid licence'}
-          onClick={() => generateVendorBadge({ vendor, licence: currentLicence, districtName, photoUrl: vendor.photoUrl, locationName: vendor.vendorType === 'establishment' ? linkedEstablishment?.establishmentName : vendor.vendorType === 'special_event' ? vendor.eventName : vendor.operatingArea })}
+          onClick={printBadge}
         >
           🪪 Print Badge
         </button>

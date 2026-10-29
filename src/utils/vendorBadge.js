@@ -1,7 +1,5 @@
 import { jsPDF } from 'jspdf';
 import logoUrl from '../assets/badge/logo.png';
-import sigMohUrl from '../assets/badge/sig-moh.png';
-import sigPhiUrl from '../assets/badge/sig-phi.png';
 import { drawBadge, PAGE_W, PAGE_H } from './vendorBadgeLayout';
 
 // Photo box on the badge is 132.5 x 154.5 reference px
@@ -20,6 +18,22 @@ async function urlToDataUrl(url) {
     const res = await fetch(url);
     if (!res.ok) return null;
     return await blobToDataUrl(await res.blob());
+  } catch {
+    return null;
+  }
+}
+
+/** A signature image as { data, w, h } (transparent PNG data URL plus its pixel size), or null. */
+async function loadSignature(url) {
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const bitmap = await createImageBitmap(blob);
+    const size = { w: bitmap.width, h: bitmap.height };
+    bitmap.close?.();
+    return { data: await blobToDataUrl(blob), ...size };
   } catch {
     return null;
   }
@@ -74,13 +88,15 @@ function loadFontFiles() {
  * Print the vendor's badge as a PDF on a 5.5 x 8.5 in sheet (landscape).
  *   licence: the vendor's current licence (for the expiry year and date issued)
  *   locationName: establishment name / operating area / event, shown as "Location"
+ *   signatories: { moh, phi } — the staff who sign, each with a signatureUrl (from the staff profile);
+ *                a signer without a signature image leaves that signature space blank
  */
-export async function generateVendorBadge({ vendor, licence, districtName, locationName, photoUrl }) {
+export async function generateVendorBadge({ vendor, licence, districtName, locationName, photoUrl, signatories }) {
   const [files, logo, sigMoh, sigPhi, photo] = await Promise.all([
     loadFontFiles(),
     urlToDataUrl(logoUrl),
-    urlToDataUrl(sigMohUrl),
-    urlToDataUrl(sigPhiUrl),
+    loadSignature(signatories?.moh?.signatureUrl),
+    loadSignature(signatories?.phi?.signatureUrl),
     loadPhoto(photoUrl),
   ]);
 

@@ -120,6 +120,11 @@ export default function AdminPanel() {
   const leaveTypes = useQuery(api.leave.listLeaveTypes);
   const districts = useQuery(api.districts.listDistricts);
   const roles = useQuery(api.roles.listRoles);
+  const signatorySettings = useQuery(api.signatures.getSignatorySettings, tab === 'signatories' ? { token } : 'skip');
+  const setBadgeSignatories = useMutation(api.signatures.setBadgeSignatories);
+  const [sigEdit, setSigEdit] = useState({});
+  const [sigMsg, setSigMsg] = useState(null);
+  const [sigSaving, setSigSaving] = useState(false);
 
   const createCat = useMutation(api.categories.createCategory);
   const updateCat = useMutation(api.categories.updateCategory);
@@ -308,6 +313,26 @@ export default function AdminPanel() {
     setRoleModal(true);
   };
 
+  /** The choices on screen: edits made so far, otherwise what is saved. */
+  const sigChoice = {
+    moh: sigEdit.moh !== undefined ? sigEdit.moh : (signatorySettings?.mohUserId || ''),
+    phi: sigEdit.phi !== undefined ? sigEdit.phi : (signatorySettings?.phiUserId || ''),
+  };
+  const saveSignatories = async () => {
+    setSigSaving(true);
+    setSigMsg(null);
+    try {
+      const res = await setBadgeSignatories({ token, mohUserId: sigChoice.moh || null, phiUserId: sigChoice.phi || null });
+      if (res?.success) { setSigEdit({}); setSigMsg({ ok: true, text: 'âœ… Badge signatories saved' }); }
+      else setSigMsg({ ok: false, text: res?.error || 'Could not save the signatories.' });
+    } catch (err) {
+      setSigMsg({ ok: false, text: err?.message || 'Could not save the signatories.' });
+    } finally {
+      setSigSaving(false);
+      setTimeout(() => setSigMsg(null), 4000);
+    }
+  };
+
   const TABS = [
     { key: 'branding',    label: '🎨 Branding' },
     { key: 'categories',  label: '📂 Categories' },
@@ -315,6 +340,7 @@ export default function AdminPanel() {
     { key: 'districts',   label: '🗺️ Districts' },
     { key: 'roles',       label: '👤 Roles' },
     { key: 'issues',      label: '📋 Issues' },
+    { key: 'signatories', label: 'âœï¸ Badge Signatories' },
   ];
 
   return (
@@ -331,6 +357,77 @@ export default function AdminPanel() {
           <div key={t.key} className={`tab ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>{t.label}</div>
         ))}
       </div>
+
+      {/* BADGE SIGNATORIES */}
+      {tab === 'signatories' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 640 }}>
+          {sigMsg && <div className={`alert ${sigMsg.ok ? 'alert-success' : 'alert-error'}`}>{sigMsg.text}</div>}
+
+          <div className="card">
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>✍️ Food vendor badge signatories</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              Choose who signs the food vendor badge. Leave a slot on <strong>Automatic</strong> to follow current staffing:
+              the active Medical Officer of Health signs on the front, and the inspector who issued the licence signs on the back.
+              A person's signature is printed only once an image has been uploaded on their staff profile.
+            </div>
+          </div>
+
+          {!signatorySettings ? (
+            <div className="loading-center"><div className="loading-spinner" /></div>
+          ) : (
+            <>
+              {[
+                { key: 'moh', title: 'Medical Officer of Health', hint: 'Signs on the front of the badge.', auto: 'the active Medical Officer of Health' },
+                { key: 'phi', title: 'Public Health Inspector', hint: 'Signs on the back of the badge.', auto: 'the inspector who issued the licence' },
+              ].map((slot) => {
+                const chosen = sigChoice[slot.key];
+                const person = signatorySettings.staff.find((s) => s._id === chosen);
+                return (
+                  <div className="card" key={slot.key}>
+                    <div style={{ fontWeight: 700 }}>{slot.title}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>{slot.hint}</div>
+                    <select
+                      className="form-control"
+                      value={chosen}
+                      onChange={(e) => setSigEdit((s) => ({ ...s, [slot.key]: e.target.value }))}
+                    >
+                      <option value="">Automatic — {slot.auto}</option>
+                      {signatorySettings.staff.map((s) => (
+                        <option key={s._id} value={s._id}>
+                          {s.name} — {s.role}{s.signatureUrl ? '' : ' (no signature)'}{s.active ? '' : ' (inactive)'}
+                        </option>
+                      ))}
+                    </select>
+                    {person ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, flexWrap: 'wrap' }}>
+                        <div style={{ width: 220, height: 70, border: '1px dashed var(--border)', borderRadius: 8, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                          {person.signatureUrl
+                            ? <img src={person.signatureUrl} alt="Signature" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+                            : <span style={{ fontSize: 12, color: '#94a3b8' }}>No signature uploaded</span>}
+                        </div>
+                        {!person.signatureUrl && (
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate(`/staff/${person._id}`)}>
+                            Upload on their profile →
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 10 }}>
+                        Follows current staffing, so the badge changes automatically when staff change.
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div>
+                <button className="btn btn-primary" onClick={saveSignatories} disabled={sigSaving}>
+                  {sigSaving ? 'Saving…' : 'Save signatories'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* BRANDING */}
       {tab === 'branding' && (

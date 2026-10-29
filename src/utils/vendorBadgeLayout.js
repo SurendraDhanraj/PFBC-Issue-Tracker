@@ -56,7 +56,8 @@ function addressLines(doc, address, district, maxW) {
 /**
  * Draw the badge onto a jsPDF document that is 8.5 x 5.5 in.
  *   fonts:  { family, hasBold } — a family already registered with the document
- *   images: { logo, sigMoh, sigPhi, photo }  — data URLs (photo may be null)
+ *   images: { logo, sigMoh, sigPhi, photo } — logo and photo are data URLs; the signatures are
+ *           { data, w, h } (a transparent PNG as a data URL, with its pixel size) or null
  *   data:   { vendor, licence, districtName, locationName }
  */
 export function drawBadge(doc, { fonts, images, data }) {
@@ -74,6 +75,19 @@ export function drawBadge(doc, { fonts, images, data }) {
     if (fill) doc.setFillColor(...fill);
     if (stroke) { doc.setDrawColor(...stroke); doc.setLineWidth(L(w)); }
     doc.rect(X(x1), Y(y1), L(x2 - x1), L(y2 - y1), fill && stroke ? 'FD' : fill ? 'F' : 'S');
+  };
+
+  /**
+   * A signature image ({ data, w, h }) of any shape, scaled to fit the area above its signature
+   * line (never stretched), centred across the line and resting on it.
+   */
+  const drawSignature = (img, x1, y1, x2, y2) => {
+    const boxW = L(x2 - x1);
+    const boxH = L(y2 - y1);
+    const scale = Math.min(boxW / img.w, boxH / img.h);
+    const w = img.w * scale;
+    const h = img.h * scale;
+    doc.addImage(img.data, 'PNG', X(x1) + (boxW - w) / 2, Y(y2) - h, w, h);
   };
 
   /** Point size at which `sample` is `samplePx` reference pixels wide in this font. */
@@ -171,7 +185,7 @@ export function drawBadge(doc, { fonts, images, data }) {
 
   // Medical Officer of Health signature
   box(226, 227.5, 459, 276.5);
-  if (images.sigMoh) doc.addImage(images.sigMoh, 'PNG', X(228), Y(229), L(229), L(31));
+  if (images.sigMoh) drawSignature(images.sigMoh, 228, 222, 457, 264);
   line(207.5, 260, 491, 260, [13, 15, 17], 1.2);
   box(237.5, 262.5, 460, 286);
   put('Medical Officer of Health', { bold: true, sample: 'Medical Officer of Health', samplePx: 204, cx: 342, cy: 271 });
@@ -226,7 +240,7 @@ export function drawBadge(doc, { fonts, images, data }) {
 
   // Public Health Inspector signature
   box(704.5, 221, 992, 276);
-  if (images.sigPhi) doc.addImage(images.sigPhi, 'PNG', X(708), Y(223), L(282), L(41));
+  if (images.sigPhi) drawSignature(images.sigPhi, 708, 219, 990, 268);
   line(711, 265.5, 996, 265.5, [13, 15, 17], 1.2);
   box(742, 265, 965, 290);
   put('Public Health Inspector', { bold: true, sample: 'Public Health Inspector', samplePx: 192, cx: 853.5, cy: 275.5 });

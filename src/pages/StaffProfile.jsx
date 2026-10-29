@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../convex/_generated/api';
 import { useAuth, useRoleCheck } from '../context/AuthContext';
 import Modal, { ModalFooter } from '../components/Modal';
+import { prepareSignature, uploadSignatureBlob } from '../utils/signature';
 
 const ALL_ROLES = [
   'Medical Officer of Health', 'Public Health Inspector III', 'Public Health Inspector II',
@@ -21,6 +22,14 @@ export default function StaffProfile() {
   const leaveRequests = useQuery(api.leave.listLeaveRequests, { token, userId: id });
   const updateUser = useMutation(api.users.updateUser);
   const deleteUser = useMutation(api.users.deleteUser);
+  // A signature can be managed by the Medical Officer of Health or by the staff member themself
+  const canEditSignature = isAdmin || id === user?._id;
+  const signatureUrl = useQuery(api.signatures.getUserSignature, canEditSignature ? { token, userId: id } : 'skip');
+  const generateSignatureUrl = useMutation(api.signatures.generateSignatureUploadUrl);
+  const setSignature = useMutation(api.signatures.setSignature);
+  const removeSignature = useMutation(api.signatures.removeSignature);
+  const [sigBusy, setSigBusy] = useState(false);
+  const [sigError, setSigError] = useState('');
 
   const [editModal, setEditModal] = useState(false);
   const [editForm, setEditForm] = useState({});
@@ -55,6 +64,39 @@ export default function StaffProfile() {
       const cur = (f.assignedDistricts || []).filter(d => d !== 'ALL');
       return { ...f, assignedDistricts: cur.includes(code) ? cur.filter(d => d !== code) : [...cur, code] };
     });
+  };
+
+  /** Clean up the chosen image into a transparent PNG, upload it and attach it to this staff member. */
+  const changeSignature = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setSigError('');
+    setSigBusy(true);
+    try {
+      const blob = await prepareSignature(file);
+      const storageId = await uploadSignatureBlob(() => generateSignatureUrl({ token }), blob);
+      const res = await setSignature({ token, userId: id, storageId });
+      if (res && res.success === false) setSigError(res.error || 'Could not save the signature.');
+    } catch (err) {
+      setSigError(err?.message || 'Could not save the signature.');
+    } finally {
+      setSigBusy(false);
+    }
+  };
+
+  const deleteSignature = async () => {
+    if (!window.confirm('Remove this signature? It will no longer print on badges.')) return;
+    setSigError('');
+    setSigBusy(true);
+    try {
+      const res = await removeSignature({ token, userId: id });
+      if (res && res.success === false) setSigError(res.error || 'Could not remove the signature.');
+    } catch (err) {
+      setSigError(err?.message || 'Could not remove the signature.');
+    } finally {
+      setSigBusy(false);
+    }
   };
 
   const districtMap = Object.fromEntries((districts || []).map(d => [d._id, d]));
@@ -111,6 +153,37 @@ export default function StaffProfile() {
               </div>
             </div>
           </div>
+
+          {canEditSignature && (
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>✍️ Signature</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+                Printed on documents this person signs, such as the food vendor badge. Upload a clear photo or scan of the
+                signature in dark ink on plain light paper — the background is removed automatically.
+              </div>
+              {sigError && <div className="alert alert-error" style={{ marginBottom: 12 }}>⚠️ {sigError}</div>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ width: 260, height: 90, border: '1px dashed var(--border)', borderRadius: 8, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                  {signatureUrl === undefined ? (
+                    <span style={{ fontSize: 12, color: '#94a3b8' }}>Loading…</span>
+                  ) : signatureUrl ? (
+                    <img src={signatureUrl} alt="Signature" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+                  ) : (
+                    <span style={{ fontSize: 12, color: '#94a3b8' }}>No signature uploaded</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <label className="btn btn-secondary btn-sm" style={{ cursor: sigBusy ? 'wait' : 'pointer' }}>
+                    {sigBusy ? 'Saving…' : signatureUrl ? 'Replace signature' : '📤 Upload signature'}
+                    <input type="file" accept="image/*" hidden disabled={sigBusy} onChange={changeSignature} />
+                  </label>
+                  {signatureUrl && !sigBusy && (
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={deleteSignature}>Remove signature</button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="card">
             <div style={{ fontWeight: 700, marginBottom: 14 }}>📅 Recent Leave Requests</div>

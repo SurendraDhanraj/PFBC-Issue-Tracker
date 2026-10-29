@@ -21,6 +21,7 @@ import type * as seed from "../seed.js";
 import type * as seedDistricts from "../seedDistricts.js";
 import type * as seedIssues from "../seedIssues.js";
 import type * as settings from "../settings.js";
+import type * as signatures from "../signatures.js";
 import type * as users from "../users.js";
 import type * as vendors from "../vendors.js";
 
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   seedDistricts: typeof seedDistricts;
   seedIssues: typeof seedIssues;
   settings: typeof settings;
+  signatures: typeof signatures;
   users: typeof users;
   vendors: typeof vendors;
 }>;

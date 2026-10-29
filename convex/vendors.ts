@@ -77,10 +77,10 @@ function licenceInfo(apps: any[], now: number) {
   return { current, open, state, daysLeft };
 }
 
-/** The status shown to staff: an "active" vendor whose licence has lapsed reads as expired. */
+/** The status shown to staff: a vendor whose licence has lapsed reads as expired (suspended and revoked are deliberate decisions and always show as they are). */
 function displayStatus(vendor: any, state: LicenceState) {
   const status = vendor.status || "pending";
-  if (status === "active" && state === "expired") return "expired";
+  if ((status === "active" || status === "pending") && state === "expired") return "expired";
   return status;
 }
 
@@ -455,23 +455,92 @@ export const recordInspection = mutation({
   },
 });
 
-/** Issue the licence: manual licence number + manually recorded payment. */
+// ---------- licence validity (calculated from the payment, never typed in) ----------
+
+/** Same calendar date one year on, less a day: starting 5 Mar 2026 -> valid to 4 Mar 2027. */
+function oneYearTerm(start: number) {
+  const d = new Date(start);
+  d.setUTCFullYear(d.getUTCFullYear() + 1);
+  return d.getTime() - DAY;
+}
+
+/**
+ * Work out the licence period for a payment made on `paymentDate`.
+ *  - Special event permits cover the event dates.
+ *  - Annual licences run one year from the payment date. When a renewal is paid on or
+ *    before the old licence's expiry, the new year starts the day after it, so no paid
+ *    time is lost. A lapsed licence restarts from the payment date.
+ */
+function computeValidity(vendor: any, apps: any[], paymentDate: number) {
+  if (vendor.vendorType === "special_event") {
+    if (!vendor.eventStartDate || !vendor.eventEndDate) {
+      return { error: "Set the event dates on the vendor before recording payment" };
+    }
+    if (vendor.eventEndDate < paymentDate) return { error: "The event has already ended" };
+    return { start: vendor.eventStartDate as number, end: vendor.eventEndDate as number, basis: "event" };
+  }
+  const previous = apps
+    .filter((a) => a.status === "approved" && a.expiryDate)
+    .sort((a, b) => b.expiryDate - a.expiryDate)[0];
+  if (previous && previous.expiryDate >= paymentDate) {
+    const start = previous.expiryDate + DAY;
+    return { start, end: oneYearTerm(start), basis: "continues_previous", previousExpiry: previous.expiryDate as number };
+  }
+  return { start: paymentDate, end: oneYearTerm(paymentDate), basis: "payment_date" };
+}
+
+/** Licence numbers are unique per holder: one vendor may keep its own number across renewals,
+ *  but no other vendor or establishment may use it. */
+async function licenceNoConflict(ctx: any, no: string, vendorId: any, exceptAppId?: any): Promise<string | null> {
+  const vendorUses = await ctx.db
+    .query("vendorApplications")
+    .withIndex("by_licence", (q: any) => q.eq("licenceNo", no))
+    .collect();
+  if (vendorUses.some((a: any) => a._id !== exceptAppId && a.vendorId !== vendorId)) {
+    return `Licence number "${no}" is already in use`;
+  }
+  const estabUse = await ctx.db
+    .query("establishmentApplications")
+    .withIndex("by_licence", (q: any) => q.eq("licenceNo", no))
+    .first();
+  if (estabUse) return `Licence number "${no}" is already in use by an establishment`;
+  return null;
+}
+
+/** What validity period would a payment on this date give? (Shown before the payment is saved.) */
+export const previewValidity = query({
+  args: { token: v.string(), vendorId: v.id("foodVendors"), paymentDate: v.number() },
+  handler: async (ctx, { token, vendorId, paymentDate }) => {
+    const user = await getSessionUser(ctx, token);
+    if (!user) return null;
+    const vendor = await ctx.db.get(vendorId);
+    if (!vendor) return null;
+    const apps = await ctx.db
+      .query("vendorApplications")
+      .withIndex("by_vendor", (q: any) => q.eq("vendorId", vendorId))
+      .collect();
+    return computeValidity(vendor, apps, paymentDate);
+  },
+});
+
+/**
+ * Record the payment and update the licence: the licence number is entered manually and the
+ * validity period is set automatically from the payment (see computeValidity).
+ */
 export const issueLicence = mutation({
   args: {
     token: v.string(),
     appId: v.id("vendorApplications"),
     licenceNo: v.string(),
-    issueDate: v.number(),
-    expiryDate: v.number(),
     fee: v.number(),
     paymentDate: v.number(),
     paymentMethod: v.string(), // cash | cheque | bank_transfer | other
     receiptNo: v.optional(v.string()),
     notes: v.optional(v.string()),
   },
-  handler: async (ctx, { token, appId, licenceNo, issueDate, expiryDate, fee, paymentDate, paymentMethod, receiptNo, notes }) => {
+  handler: async (ctx, { token, appId, licenceNo, fee, paymentDate, paymentMethod, receiptNo, notes }) => {
     const user = await getWriter(ctx, token);
-    if (!user) return { success: false, error: "You do not have permission to issue licences" };
+    if (!user) return { success: false, error: "You do not have permission to record payments" };
 
     const app = await ctx.db.get(appId);
     if (!app) return { success: false, error: "Application not found" };
@@ -485,30 +554,23 @@ export const issueLicence = mutation({
     if (!no) return { success: false, error: "Licence number is required" };
     if (!(fee >= 0)) return { success: false, error: "Enter the fee that was paid" };
     if (!paymentMethod) return { success: false, error: "Select how the fee was paid" };
-    if (expiryDate <= issueDate) return { success: false, error: "Expiry date must be after the issue date" };
+    const now = Date.now();
+    if (paymentDate > now + DAY) return { success: false, error: "The payment date cannot be in the future" };
 
     if (vendor.vendorType === "itinerant" && !app.inspectionDate) {
       return { success: false, error: "Itinerant vendors must be inspected before a licence is issued" };
     }
-    if (vendor.vendorType === "special_event" && durationDays(issueDate, expiryDate) > 30) {
-      return { success: false, error: "Special event permit cannot exceed 30 days" };
-    }
 
-    // Licence numbers are unique across vendors and establishments.
-    const vendorDup = await ctx.db
+    const conflict = await licenceNoConflict(ctx, no, vendor._id, appId);
+    if (conflict) return { success: false, error: conflict };
+
+    const apps = await ctx.db
       .query("vendorApplications")
-      .withIndex("by_licence", (q: any) => q.eq("licenceNo", no))
+      .withIndex("by_vendor", (q: any) => q.eq("vendorId", vendor._id))
       .collect();
-    if (vendorDup.some((a: any) => a._id !== appId)) {
-      return { success: false, error: `Licence number "${no}" is already in use` };
-    }
-    const estabDup = await ctx.db
-      .query("establishmentApplications")
-      .withIndex("by_licence", (q: any) => q.eq("licenceNo", no))
-      .first();
-    if (estabDup) return { success: false, error: `Licence number "${no}" is already in use by an establishment` };
+    const validity: any = computeValidity(vendor, apps, paymentDate);
+    if (validity.error) return { success: false, error: validity.error };
 
-    const now = Date.now();
     const patch: any = {
       status: "approved",
       licenceNo: no,
@@ -517,15 +579,32 @@ export const issueLicence = mutation({
       paymentDate,
       paymentMethod,
       receiptNo: receiptNo?.trim() || undefined,
-      expiryDate,
       approvedBy: user._id,
-      approvedAt: issueDate, // licence start date
+      approvedAt: validity.start, // licence start date
+      expiryDate: validity.end,
       notes: notes || app.notes,
     };
     Object.keys(patch).forEach((k) => patch[k] === undefined && delete patch[k]);
     await ctx.db.patch(appId, patch);
 
-    if (expiryDate >= now - DAY) await ctx.db.patch(vendor._id, { status: "active", updatedAt: now });
+    if (validity.end >= now - DAY) await ctx.db.patch(vendor._id, { status: "active", updatedAt: now });
+    return { success: true, licenceNo: no, validFrom: validity.start, validTo: validity.end };
+  },
+});
+
+/** Correct the licence number on a licence that has already been issued. */
+export const updateLicenceNumber = mutation({
+  args: { token: v.string(), appId: v.id("vendorApplications"), licenceNo: v.string() },
+  handler: async (ctx, { token, appId, licenceNo }) => {
+    const user = await getWriter(ctx, token);
+    if (!user) return { success: false, error: "You do not have permission to manage licences" };
+    const app = await ctx.db.get(appId);
+    if (!app || app.status !== "approved") return { success: false, error: "Only an issued licence can be corrected" };
+    const no = licenceNo.trim();
+    if (!no) return { success: false, error: "Licence number is required" };
+    const conflict = await licenceNoConflict(ctx, no, app.vendorId, appId);
+    if (conflict) return { success: false, error: conflict };
+    await ctx.db.patch(appId, { licenceNo: no });
     return { success: true };
   },
 });

@@ -7,7 +7,7 @@ import StatusBadge from '../components/StatusBadge';
 import Modal, { ModalFooter } from '../components/Modal';
 import {
   TYPE_LABELS, PAYMENT_METHODS, LICENCE_STATE, fmtDay, fmtMoment, toDateInput, todayInput,
-  dayToMs, oneYearOn, addDays, daysLeftText, generateVendorBadge, preparePhoto, uploadPhotoBlob,
+  dayToMs, daysLeftText, generateVendorBadge, preparePhoto, uploadPhotoBlob,
 } from '../utils/vendors';
 
 const EDITABLE_STATUSES = ['active', 'pending', 'suspended', 'revoked'];
@@ -35,6 +35,7 @@ export default function FoodVendorDetail() {
   const startApplication = useMutation(api.vendors.startApplication);
   const recordInspection = useMutation(api.vendors.recordInspection);
   const issueLicence = useMutation(api.vendors.issueLicence);
+  const updateLicenceNumber = useMutation(api.vendors.updateLicenceNumber);
   const rejectApplication = useMutation(api.vendors.rejectApplication);
   const generatePhotoUrl = useMutation(api.vendors.generatePhotoUploadUrl);
   const setVendorPhoto = useMutation(api.vendors.setVendorPhoto);
@@ -51,7 +52,14 @@ export default function FoodVendorDetail() {
   const [applyForm, setApplyForm] = useState({ fee: '', notes: '' });
   const [inspectForm, setInspectForm] = useState({ inspectionDate: todayInput(), inspectionNotes: '' });
   const [issueForm, setIssueForm] = useState({});
-  const [expiryEdited, setExpiryEdited] = useState(false);
+  const [licenceNoValue, setLicenceNoValue] = useState('');
+  // The validity period the server will set for a payment on the chosen date
+  const validityPreview = useQuery(
+    api.vendors.previewValidity,
+    dialog === 'issue' && issueForm.paymentDate
+      ? { token, vendorId: id, paymentDate: dayToMs(issueForm.paymentDate) }
+      : 'skip'
+  );
   const [rejectReason, setRejectReason] = useState('');
 
   if (data === undefined) return <div className="loading-center"><div className="loading-spinner" /></div>;
@@ -114,16 +122,16 @@ export default function FoodVendorDetail() {
   };
 
   const openIssue = () => {
-    const issueDate = todayInput();
-    let expiry = oneYearOn(issueDate);
-    if (vendor.vendorType === 'special_event' && vendor.eventEndDate) expiry = toDateInput(vendor.eventEndDate);
     setIssueForm({
-      licenceNo: '', issueDate, expiryDate: expiry, fee: openApplication?.fee ?? '',
-      paymentDate: issueDate, paymentMethod: '', receiptNo: '', notes: '',
+      // Prefilled from the previous licence — change it if a new number was issued with this payment.
+      licenceNo: currentLicence?.licenceNo || '',
+      fee: openApplication?.fee ?? '',
+      paymentDate: todayInput(), paymentMethod: '', receiptNo: '', notes: '',
     });
-    setExpiryEdited(false);
     setError(''); setDialog('issue');
   };
+
+  const openLicenceNo = () => { setLicenceNoValue(currentLicence?.licenceNo || ''); setError(''); setDialog('licenceNo'); };
 
   const openReject = () => { setRejectReason(''); setError(''); setDialog('reject'); };
 
@@ -173,10 +181,14 @@ export default function FoodVendorDetail() {
     run(() => issueLicence({
       token, appId: openApplication._id,
       licenceNo: f.licenceNo.trim(),
-      issueDate: dayToMs(f.issueDate), expiryDate: dayToMs(f.expiryDate),
       fee: Number(f.fee), paymentDate: dayToMs(f.paymentDate), paymentMethod: f.paymentMethod,
       receiptNo: f.receiptNo || undefined, notes: f.notes || undefined,
     }));
+  };
+
+  const submitLicenceNo = (e) => {
+    e.preventDefault();
+    run(() => updateLicenceNumber({ token, appId: currentLicence._id, licenceNo: licenceNoValue }));
   };
 
   const submitReject = (e) => {
@@ -246,7 +258,10 @@ export default function FoodVendorDetail() {
       {/* Licence status */}
       <div className="licence-status-card">
         <div className="licence-info">
-          <div className="licence-number">🪪 {currentLicence?.licenceNo || 'No licence'}</div>
+          <div className="licence-number">🪪 {currentLicence?.licenceNo || 'No licence'}
+            {canManageFood && currentLicence && (
+              <button className="btn btn-secondary btn-sm" style={{ marginLeft: 8, padding: '0 6px', fontSize: 11 }} onClick={openLicenceNo} title="Correct the licence number">✏️</button>
+            )}</div>
           <div className="licence-expiry">
             {currentLicence
               ? `${fmtDay(currentLicence.approvedAt)} → ${fmtDay(currentLicence.expiryDate)}`
@@ -296,7 +311,7 @@ export default function FoodVendorDetail() {
                     disabled={needsInspection && !openApplication.inspectionDate}
                     title={needsInspection && !openApplication.inspectionDate ? 'Record the inspection first' : ''}
                   >
-                    ✅ Issue licence
+                    ✅ Record payment &amp; issue licence
                   </button>
                   <button className="btn btn-secondary btn-sm" onClick={openReject}>Reject</button>
                 </div>
@@ -534,47 +549,26 @@ export default function FoodVendorDetail() {
         </form>
       </Modal>
 
-      {/* ---- Issue licence ---- */}
-      <Modal isOpen={dialog === 'issue'} onClose={close} title="Issue Licence" size="lg">
+      {/* ---- Record payment & issue / renew licence ---- */}
+      <Modal isOpen={dialog === 'issue'} onClose={close} title={isRenewal ? 'Record Payment & Renew Licence' : 'Record Payment & Issue Licence'} size="lg">
         <form onSubmit={submitIssue} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {error && <div className="alert alert-error">⚠️ {error}</div>}
           <div className="form-group">
-            <label className="form-label">Licence number * <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(entered manually, must be unique)</span></label>
+            <label className="form-label">
+              Licence number * <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(entered manually — change it if a new number was issued with this payment)</span>
+            </label>
             <input className="form-control" value={issueForm.licenceNo || ''} onChange={(e) => setIssue({ licenceNo: e.target.value })} required />
+            {currentLicence && (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Previous licence: {currentLicence.licenceNo}</div>
+            )}
           </div>
-          <div className="form-row">
-            <div className="form-group"><label className="form-label">Issue date *</label>
-              <input
-                className="form-control" type="date" value={issueForm.issueDate || ''}
-                onChange={(e) => {
-                  const issueDate = e.target.value;
-                  setIssue({
-                    issueDate,
-                    ...(!expiryEdited && vendor.vendorType !== 'special_event' ? { expiryDate: oneYearOn(issueDate) } : {}),
-                  });
-                }}
-                required
-              /></div>
-            <div className="form-group">
-              <label className="form-label">
-                Expiry date * <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>
-                  ({vendor.vendorType === 'special_event' ? 'max 30 days' : 'one year'})
-                </span>
-              </label>
-              <input
-                className="form-control" type="date" value={issueForm.expiryDate || ''}
-                min={issueForm.issueDate ? addDays(issueForm.issueDate, 1) : undefined}
-                onChange={(e) => { setExpiryEdited(true); setIssue({ expiryDate: e.target.value }); }}
-                required
-              /></div>
-          </div>
-          <div className="divider" />
+
           <div style={{ fontWeight: 600, fontSize: 13 }}>Payment (recorded manually)</div>
           <div className="form-row">
             <div className="form-group"><label className="form-label">Fee paid (TTD) *</label>
               <input className="form-control" type="number" min="0" step="0.01" value={issueForm.fee ?? ''} onChange={(e) => setIssue({ fee: e.target.value })} required /></div>
             <div className="form-group"><label className="form-label">Payment date *</label>
-              <input className="form-control" type="date" value={issueForm.paymentDate || ''} onChange={(e) => setIssue({ paymentDate: e.target.value })} required /></div>
+              <input className="form-control" type="date" max={todayInput()} value={issueForm.paymentDate || ''} onChange={(e) => setIssue({ paymentDate: e.target.value })} required /></div>
           </div>
           <div className="form-row">
             <div className="form-group"><label className="form-label">Payment method *</label>
@@ -585,11 +579,53 @@ export default function FoodVendorDetail() {
             <div className="form-group"><label className="form-label">Receipt number</label>
               <input className="form-control" value={issueForm.receiptNo || ''} onChange={(e) => setIssue({ receiptNo: e.target.value })} /></div>
           </div>
+
+          {/* Validity is calculated by the server from the payment — it is not typed in */}
+          <div style={{ padding: '12px 14px', borderRadius: 'var(--radius-sm)', background: 'var(--surface-glass)' }}>
+            <div className="detail-label">Validity period (set automatically)</div>
+            {validityPreview === undefined ? (
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Calculating…</div>
+            ) : validityPreview === null ? (
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>—</div>
+            ) : validityPreview.error ? (
+              <div style={{ fontSize: 13, color: '#dc2626' }}>⚠️ {validityPreview.error}</div>
+            ) : (
+              <>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{fmtDay(validityPreview.start)} → {fmtDay(validityPreview.end)}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  {validityPreview.basis === 'event' && 'Covers the event dates.'}
+                  {validityPreview.basis === 'continues_previous' && `Continues from the previous licence, which expires ${fmtDay(validityPreview.previousExpiry)} — no paid time is lost.`}
+                  {validityPreview.basis === 'payment_date' && (isRenewal
+                    ? 'The previous licence has lapsed, so the new year starts on the payment date.'
+                    : 'One year from the payment date.')}
+                </div>
+              </>
+            )}
+          </div>
+
           <div className="form-group"><label className="form-label">Notes</label>
             <textarea className="form-control" rows={2} value={issueForm.notes || ''} onChange={(e) => setIssue({ notes: e.target.value })} /></div>
           <ModalFooter>
             <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
-            <button type="submit" className="btn btn-success" disabled={busy}>{busy ? 'Issuing…' : '✅ Issue licence'}</button>
+            <button type="submit" className="btn btn-success" disabled={busy || !!validityPreview?.error}>
+              {busy ? 'Saving…' : isRenewal ? '✅ Record payment & renew' : '✅ Record payment & issue licence'}
+            </button>
+          </ModalFooter>
+        </form>
+      </Modal>
+
+      {/* ---- Correct licence number ---- */}
+      <Modal isOpen={dialog === 'licenceNo'} onClose={close} title="Update Licence Number">
+        <form onSubmit={submitLicenceNo} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {error && <div className="alert alert-error">⚠️ {error}</div>}
+          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            Corrects the number on the current licence. The validity period and payment record are unchanged.
+          </div>
+          <div className="form-group"><label className="form-label">Licence number *</label>
+            <input className="form-control" value={licenceNoValue} onChange={(e) => setLicenceNoValue(e.target.value)} required /></div>
+          <ModalFooter>
+            <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Update'}</button>
           </ModalFooter>
         </form>
       </Modal>
